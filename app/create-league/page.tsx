@@ -126,6 +126,6 @@ export default function CreateLeague() {
           </button>
         </div>
       </div>
-    </main>
+    </main> 
   );
 }
