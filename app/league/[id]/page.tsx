@@ -55,10 +55,7 @@ export default function LeaguePage() {
   return (
     <main className="min-h-screen bg-gray-950 text-white p-8">
       <div className="max-w-2xl mx-auto">
-        <button
-          onClick={() => router.push("/dashboard")}
-          className="text-gray-400 hover:text-white mb-6 block"
-        >
+        <button onClick={() => router.push("/dashboard")} className="text-gray-400 hover:text-white mb-6 block">
           ← Back to Dashboard
         </button>
 
@@ -67,14 +64,22 @@ export default function LeaguePage() {
           {league.scoring_format} · {league.draft_type} Draft · {league.num_teams} Teams
         </p>
 
-        <div className="flex gap-4 mb-6">
+        <div className="flex gap-4 mb-6 flex-wrap">
           {isCommissioner && (
-            <button
-              onClick={() => router.push(`/draft/${league.id}`)}
-              className="bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-6 rounded-lg"
-            >
-              Draft Room
-            </button>
+            <>
+              <button
+                onClick={() => router.push(`/draft/${league.id}`)}
+                className="bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-6 rounded-lg"
+              >
+                Draft Room
+              </button>
+              <button
+                onClick={() => router.push(`/manual-draft/${league.id}`)}
+                className="bg-blue-700 hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-lg"
+              >
+                Manual Draft
+              </button>
+            </>
           )}
           <button
             onClick={() => router.push(`/standings/${league.id}`)}
