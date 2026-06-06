@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { useRouter, useParams } from "next/navigation";
+import Nav from "@/app/components/Nav";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -13,9 +14,10 @@ export default function LeaguePage() {
   const [members, setMembers] = useState<any[]>([]);
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [copied, setCopied] = useState(false);
   const router = useRouter();
   const params = useParams();
-  const leagueId = params.id;
+  const leagueId = params.id as string;
 
   useEffect(() => {
     async function load() {
@@ -36,6 +38,13 @@ export default function LeaguePage() {
     load();
   }, []);
 
+  function copyInvite() {
+    const inviteLink = `${window.location.origin}/join/${league.invite_code}`;
+    navigator.clipboard.writeText(inviteLink);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
   if (loading) return (
     <main className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
       <p>Loading...</p>
@@ -51,94 +60,135 @@ export default function LeaguePage() {
   const isCommissioner = user?.id === league.commissioner_user_id;
   const spotsLeft = league.num_teams - members.length;
   const inviteLink = `${window.location.origin}/join/${league.invite_code}`;
+  const draftComplete = league.draft_status === "COMPLETED";
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white p-8">
-      <div className="max-w-2xl mx-auto">
-        <button onClick={() => router.push("/dashboard")} className="text-gray-400 hover:text-white mb-6 block">
-          ← Back to Dashboard
-        </button>
+    <main className="min-h-screen bg-gray-950 text-white">
+      <Nav
+        leagueId={leagueId}
+        leagueName={league.name}
+        isCommissioner={isCommissioner}
+        activePage="league"
+      />
 
-        <h1 className="text-3xl font-bold mb-2">{league.name}</h1>
-        <p className="text-gray-400 mb-8">
-          {league.scoring_format} · {league.draft_type} Draft · {league.num_teams} Teams
-        </p>
+      <div className="max-w-3xl mx-auto px-4 py-8">
 
-        {/* Primary Actions */}
-        <div className="flex gap-3 mb-3 flex-wrap">
-          <button
-            onClick={() => router.push(`/draft/${league.id}`)}
-            className="bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-6 rounded-lg"
-          >
-            Draft Room
-          </button>
-          <button
-            onClick={() => router.push(`/standings/${league.id}`)}
-            className="bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg"
-          >
-            Standings
-          </button>
-          <button
-            onClick={() => router.push(`/roster/${league.id}`)}
-            className="bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg"
-          >
-            Rosters
-          </button>
+        {/* League Header Card */}
+        <div className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800">
+          <div className="flex justify-between items-start">
+            <div>
+              <h1 className="text-2xl font-black mb-1">{league.name}</h1>
+              <div className="flex gap-3 text-sm text-gray-400">
+                <span>{league.scoring_format}</span>
+                <span>·</span>
+                <span>{league.draft_type} Draft</span>
+                <span>·</span>
+                <span>{league.num_teams} Teams</span>
+              </div>
+            </div>
+            <div className={`px-3 py-1 rounded-full text-xs font-bold ${
+              draftComplete
+                ? "bg-green-900 text-green-400"
+                : "bg-yellow-900 text-yellow-400"
+            }`}>
+              {draftComplete ? "Draft Complete" : "Draft Pending"}
+            </div>
+          </div>
+
+          {/* Stats Row */}
+          <div className="grid grid-cols-3 gap-4 mt-6">
+            <div className="text-center">
+              <p className="text-2xl font-black text-white">{members.length}/{league.num_teams}</p>
+              <p className="text-xs text-gray-500 mt-1">Teams Joined</p>
+            </div>
+            <div className="text-center">
+              <p className="text-2xl font-black text-green-400">{spotsLeft}</p>
+              <p className="text-xs text-gray-500 mt-1">Spots Left</p>
+            </div>
+            <div className="text-center">
+              <p className="text-2xl font-black text-white">4</p>
+              <p className="text-xs text-gray-500 mt-1">Playoff Weeks</p>
+            </div>
+          </div>
         </div>
 
-        {/* Commissioner Actions */}
+        {/* Teams List */}
+        <div className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800">
+          <h2 className="font-bold mb-4 text-gray-300 uppercase text-xs tracking-wider">Teams</h2>
+          <div className="flex flex-col gap-2">
+            {members.map((member, i) => (
+              <div key={member.id} className="flex items-center gap-3 py-2 border-b border-gray-800 last:border-0">
+                <div className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center text-sm font-black">
+                  {member.team_name.charAt(0).toUpperCase()}
+                </div>
+                <div className="flex-1">
+                  <span className="font-bold">{member.team_name}</span>
+                  {member.user_id === user?.id && (
+                    <span className="text-xs text-gray-500 ml-2">(You)</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  {member.user_id === league.commissioner_user_id && (
+                    <span className="text-xs bg-green-900 text-green-400 px-2 py-0.5 rounded-full">Commissioner</span>
+                  )}
+                  <span className="text-xs text-gray-600">#{i + 1}</span>
+                </div>
+              </div>
+            ))}
+            {spotsLeft > 0 && (
+              <div className="flex items-center gap-3 py-2 opacity-40">
+                <div className="w-8 h-8 rounded-full border border-dashed border-gray-600 flex items-center justify-center text-gray-600 text-sm">+</div>
+                <span className="text-gray-600 text-sm">{spotsLeft} spot{spotsLeft > 1 ? "s" : ""} remaining</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Commissioner Panel */}
         {isCommissioner && (
-          <div className="flex gap-3 mb-6 flex-wrap">
-            <button
-              onClick={() => router.push(`/manual-draft/${league.id}`)}
-              className="bg-blue-700 hover:bg-blue-600 text-white font-bold py-2 px-5 rounded-lg text-sm"
-            >
-              Manual Draft
-            </button>
-            <button
-              onClick={() => router.push(`/league-settings/${league.id}`)}
-              className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-5 rounded-lg text-sm"
-            >
-              ⚙ Scoring Settings
-            </button>
+          <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 border-dashed">
+            <h2 className="font-bold mb-4 text-gray-300 uppercase text-xs tracking-wider">⚙ Commissioner Tools</h2>
+
+            {/* Invite */}
+            <div className="mb-6">
+              <p className="text-sm text-gray-400 mb-2">Invite Link</p>
+              <div className="flex gap-2">
+                <input
+                  readOnly
+                  value={inviteLink}
+                  className="flex-1 bg-gray-800 text-white p-2.5 rounded-lg text-sm border border-gray-700"
+                />
+                <button
+                  onClick={copyInvite}
+                  className={`font-bold py-2.5 px-5 rounded-lg text-sm transition-colors ${
+                    copied ? "bg-blue-600 text-white" : "bg-green-600 hover:bg-green-500 text-white"
+                  }`}
+                >
+                  {copied ? "Copied!" : "Copy"}
+                </button>
+              </div>
+              <p className="text-gray-600 text-xs mt-1">
+                Invite code: <span className="font-mono text-gray-400">{league.invite_code}</span>
+              </p>
+            </div>
+
+            {/* Commissioner Actions */}
+            <div className="flex gap-3 flex-wrap">
+              <button
+                onClick={() => router.push(`/manual-draft/${leagueId}`)}
+                className="bg-blue-700 hover:bg-blue-600 text-white font-bold py-2 px-5 rounded-lg text-sm"
+              >
+                Manual Draft
+              </button>
+              <button
+                onClick={() => router.push(`/league-settings/${leagueId}`)}
+                className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-5 rounded-lg text-sm"
+              >
+                Scoring Settings
+              </button>
+            </div>
           </div>
         )}
-
-        <div className="bg-gray-800 rounded-lg p-6 mb-6">
-          <h2 className="text-lg font-bold mb-2">Invite Friends</h2>
-          <p className="text-gray-400 mb-4">
-            {members.length}/{league.num_teams} teams joined · {spotsLeft} spots left
-          </p>
-          <div className="flex gap-2">
-            <input
-              readOnly
-              value={inviteLink}
-              className="flex-1 bg-gray-700 text-white p-3 rounded-lg text-sm"
-            />
-            <button
-              onClick={() => navigator.clipboard.writeText(inviteLink)}
-              className="bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-6 rounded-lg"
-            >
-              Copy
-            </button>
-          </div>
-          <p className="text-gray-500 mt-2 text-sm">
-            Invite code: <span className="text-white font-mono">{league.invite_code}</span>
-          </p>
-        </div>
-
-        <div className="bg-gray-800 rounded-lg p-6">
-          <h2 className="text-lg font-bold mb-4">Teams ({members.length}/{league.num_teams})</h2>
-          {members.map((member, i) => (
-            <div key={member.id} className="flex items-center gap-3 py-2 border-b border-gray-700 last:border-0">
-              <span className="text-gray-500">#{i + 1}</span>
-              <span>{member.team_name}</span>
-              {member.user_id === league.commissioner_user_id && (
-                <span className="text-xs bg-green-900 text-green-400 px-2 py-1 rounded">Commissioner</span>
-              )}
-            </div>
-          ))}
-        </div>
       </div>
     </main>
   );

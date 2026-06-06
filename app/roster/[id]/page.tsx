@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { useRouter, useParams } from "next/navigation";
+import Nav from "../../components/Nav";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -56,7 +57,7 @@ export default function RosterPage() {
   const [selectedWeek, setSelectedWeek] = useState<number>(1);
   const router = useRouter();
   const params = useParams();
-  const leagueId = params.id;
+  const leagueId = params.id as string;
 
   useEffect(() => {
     async function load() {
@@ -194,6 +195,7 @@ export default function RosterPage() {
     </main>
   );
 
+  const isCommissioner = user?.id === league?.commissioner_user_id;
   const roster = selectedUserId ? getRosterForUser(selectedUserId) : [];
   const activeCount = roster.filter((p: any) => p.is_active).length;
   const eliminatedCount = roster.filter((p: any) => !p.is_active).length;
@@ -212,19 +214,12 @@ export default function RosterPage() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-
-      {/* Header */}
-      <div className="bg-gray-900 border-b border-gray-800 px-6 py-4">
-        <div className="max-w-7xl mx-auto">
-          <button
-            onClick={() => router.push(`/league/${leagueId}`)}
-            className="text-gray-400 hover:text-white mb-3 block text-sm"
-          >
-            ← Back to League
-          </button>
-          <h1 className="text-xl font-bold">{league?.name} — Rosters</h1>
-        </div>
-      </div>
+      <Nav
+        leagueId={leagueId}
+        leagueName={league?.name}
+        isCommissioner={isCommissioner}
+        activePage="roster"
+      />
 
       <div className="max-w-7xl mx-auto px-4 py-6">
 
@@ -312,7 +307,6 @@ export default function RosterPage() {
 
               return (
                 <div key={group.label} className="mb-8 overflow-x-auto">
-                  {/* Group Header */}
                   <div
                     className="grid text-xs text-gray-500 font-bold uppercase px-3 py-2 border-b border-gray-700 bg-gray-900 rounded-t min-w-max"
                     style={{ gridTemplateColumns: gridCols }}
@@ -327,7 +321,6 @@ export default function RosterPage() {
                     <span className="text-right">STATUS</span>
                   </div>
 
-                  {/* Player Rows */}
                   {groupPlayers.map((player: any) => {
                     const stats = activeTab === "playoff"
                       ? getPlayerWeekStats(player.id, selectedWeek)
@@ -342,12 +335,10 @@ export default function RosterPage() {
                         }`}
                         style={{ gridTemplateColumns: gridCols }}
                       >
-                        {/* Position Badge */}
                         <span className={`text-xs font-black px-1.5 py-0.5 rounded text-center w-fit ${getPositionBadge(player.position)}`}>
                           {player.position}
                         </span>
 
-                        {/* Player Name + Team */}
                         <div className="pl-2">
                           <div className="flex items-center gap-2">
                             <p className={`font-bold text-sm ${!player.is_active ? "line-through text-gray-500" : "text-white"}`}>
@@ -362,23 +353,19 @@ export default function RosterPage() {
                           </p>
                         </div>
 
-                        {/* OPP / TIME stacked */}
                         <div className="text-center">
                           <p className="text-xs font-bold text-gray-500">—</p>
                           <p className="text-xs text-gray-700">TBD</p>
                         </div>
 
-                        {/* PROJ */}
                         <div className="text-center">
                           <p className="text-xs text-blue-600">—</p>
                         </div>
 
-                        {/* Stat Cells */}
                         {statCells.map((cell, i) => (
                           <span key={i} className="text-right text-sm">{cell}</span>
                         ))}
 
-                        {/* Status */}
                         <span className={`text-right text-xs font-bold ${player.is_active ? "text-green-400" : "text-red-400"}`}>
                           {player.is_active ? "✓ Active" : "✗ Out"}
                         </span>
@@ -389,7 +376,6 @@ export default function RosterPage() {
               );
             })}
 
-            {/* Team Total Footer */}
             {activeTab === "playoff" && roster.length > 0 && (
               <div className="bg-gray-800 rounded-lg p-4 flex justify-between items-center mt-4 sticky bottom-4">
                 <div>
