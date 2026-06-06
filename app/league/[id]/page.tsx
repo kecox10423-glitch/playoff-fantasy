@@ -64,30 +64,45 @@ export default function LeaguePage() {
           {league.scoring_format} · {league.draft_type} Draft · {league.num_teams} Teams
         </p>
 
-        <div className="flex gap-4 mb-6 flex-wrap">
-          {isCommissioner && (
-            <>
-              <button
-                onClick={() => router.push(`/draft/${league.id}`)}
-                className="bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-6 rounded-lg"
-              >
-                Draft Room
-              </button>
-              <button
-                onClick={() => router.push(`/manual-draft/${league.id}`)}
-                className="bg-blue-700 hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-lg"
-              >
-                Manual Draft
-              </button>
-            </>
-          )}
+        {/* Primary Actions */}
+        <div className="flex gap-3 mb-3 flex-wrap">
+          <button
+            onClick={() => router.push(`/draft/${league.id}`)}
+            className="bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-6 rounded-lg"
+          >
+            Draft Room
+          </button>
           <button
             onClick={() => router.push(`/standings/${league.id}`)}
             className="bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg"
           >
             Standings
           </button>
+          <button
+            onClick={() => router.push(`/roster/${league.id}`)}
+            className="bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg"
+          >
+            Rosters
+          </button>
         </div>
+
+        {/* Commissioner Actions */}
+        {isCommissioner && (
+          <div className="flex gap-3 mb-6 flex-wrap">
+            <button
+              onClick={() => router.push(`/manual-draft/${league.id}`)}
+              className="bg-blue-700 hover:bg-blue-600 text-white font-bold py-2 px-5 rounded-lg text-sm"
+            >
+              Manual Draft
+            </button>
+            <button
+              onClick={() => router.push(`/league-settings/${league.id}`)}
+              className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-5 rounded-lg text-sm"
+            >
+              ⚙ Scoring Settings
+            </button>
+          </div>
+        )}
 
         <div className="bg-gray-800 rounded-lg p-6 mb-6">
           <h2 className="text-lg font-bold mb-2">Invite Friends</h2>
