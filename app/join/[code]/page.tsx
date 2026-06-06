@@ -22,10 +22,7 @@ export default function JoinLeague() {
   useEffect(() => {
     async function load() {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        router.push("/login");
-        return;
-      }
+      if (!user) { router.push("/login"); return; }
       setUser(user);
 
       const { data: leagueData } = await supabase
@@ -41,6 +38,11 @@ export default function JoinLeague() {
   }, []);
 
   async function handleJoin() {
+    if (!teamName.trim()) {
+      setError("Please enter a team name.");
+      return;
+    }
+
     setJoining(true);
     setError("");
 
@@ -66,7 +68,7 @@ export default function JoinLeague() {
     const { error } = await supabase.from("league_members").insert({
       league_id: league.id,
       user_id: user.id,
-      team_name: teamName || "My Team",
+      team_name: teamName.trim(),
       draft_position: members.length + 1,
     });
 
@@ -118,7 +120,7 @@ export default function JoinLeague() {
           {error && <p className="text-red-400">{error}</p>}
           <button
             onClick={handleJoin}
-            disabled={joining}
+            disabled={joining || !teamName.trim()}
             className="bg-green-600 hover:bg-green-500 disabled:bg-gray-700 text-white font-bold py-3 rounded-lg"
           >
             {joining ? "Joining..." : "Join League"}

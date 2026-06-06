@@ -14,6 +14,7 @@ function generateInviteCode() {
 
 export default function CreateLeague() {
   const [name, setName] = useState("");
+  const [teamName, setTeamName] = useState("");
   const [numTeams, setNumTeams] = useState(6);
   const [scoringFormat, setScoringFormat] = useState("PPR");
   const [draftType, setDraftType] = useState("LIVE");
@@ -22,14 +23,16 @@ export default function CreateLeague() {
   const router = useRouter();
 
   async function handleCreate() {
+    if (!teamName.trim()) {
+      setError("Please enter your team name.");
+      return;
+    }
+
     setLoading(true);
     setError("");
 
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      router.push("/login");
-      return;
-    }
+    if (!user) { router.push("/login"); return; }
 
     const rosterConfig = { QB: 2, RB: 3, WR: 4, TE: 2, K: 2, DST: 2 };
     const inviteCode = generateInviteCode();
@@ -54,11 +57,10 @@ export default function CreateLeague() {
       return;
     }
 
-    // Add commissioner as first member
     await supabase.from("league_members").insert({
       league_id: data.id,
       user_id: user.id,
-      team_name: "My Team",
+      team_name: teamName.trim(),
       draft_position: 1,
     });
 
@@ -68,6 +70,12 @@ export default function CreateLeague() {
   return (
     <main className="min-h-screen bg-gray-950 text-white p-8">
       <div className="max-w-lg mx-auto">
+        <button
+          onClick={() => router.push("/dashboard")}
+          className="text-gray-400 hover:text-white mb-6 block"
+        >
+          ← Back to Dashboard
+        </button>
         <h1 className="text-3xl font-bold mb-8">Create League</h1>
         <div className="flex flex-col gap-6">
           <div>
@@ -77,6 +85,16 @@ export default function CreateLeague() {
               placeholder="e.g. The Championship League"
               value={name}
               onChange={(e) => setName(e.target.value)}
+              className="w-full bg-gray-800 text-white p-3 rounded-lg"
+            />
+          </div>
+          <div>
+            <label className="block text-gray-400 mb-2">Your Team Name</label>
+            <input
+              type="text"
+              placeholder="e.g. The Goats"
+              value={teamName}
+              onChange={(e) => setTeamName(e.target.value)}
               className="w-full bg-gray-800 text-white p-3 rounded-lg"
             />
           </div>
@@ -119,13 +137,13 @@ export default function CreateLeague() {
           {error && <p className="text-red-400">{error}</p>}
           <button
             onClick={handleCreate}
-            disabled={loading || !name}
+            disabled={loading || !name || !teamName}
             className="bg-green-600 hover:bg-green-500 disabled:bg-gray-700 text-white font-bold py-3 rounded-lg"
           >
             {loading ? "Creating..." : "Create League"}
           </button>
         </div>
       </div>
-    </main> 
+    </main>
   );
 }
