@@ -27,6 +27,38 @@ function PFFLLogo({ size = 28 }: { size?: number }) {
   );
 }
 
+function PlayerAvatar({ name, position }: { name: string; position: string }) {
+  const initials = name.split(" ").map(n => n[0]).join("").substring(0, 2).toUpperCase();
+  const colors: { [key: string]: string } = {
+    QB: "bg-red-800 text-red-200",
+    RB: "bg-blue-800 text-blue-200",
+    WR: "bg-yellow-800 text-yellow-200",
+    TE: "bg-purple-800 text-purple-200",
+    K: "bg-gray-700 text-gray-300",
+    DST: "bg-orange-800 text-orange-200",
+  };
+  return (
+    <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 ${colors[position] || "bg-gray-700 text-gray-300"}`}>
+      {initials}
+    </div>
+  );
+}
+
+function getPositionBadge(position: string) {
+  switch (position) {
+    case "QB": return "bg-red-900 text-red-300";
+    case "RB": return "bg-blue-900 text-blue-300";
+    case "WR": return "bg-yellow-900 text-yellow-300";
+    case "TE": return "bg-purple-900 text-purple-300";
+    case "K": return "bg-gray-700 text-gray-300";
+    case "DST": return "bg-orange-900 text-orange-300";
+    default: return "bg-gray-700 text-gray-300";
+  }
+}
+
+type SortKey = "rank" | "name" | "seed" | "proj";
+type SortDir = "asc" | "desc";
+
 export default function DraftPage() {
   const [league, setLeague] = useState<any>(null);
   const [members, setMembers] = useState<any[]>([]);
@@ -36,15 +68,19 @@ export default function DraftPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [positionFilter, setPositionFilter] = useState("ALL");
+  const [showAvailableOnly, setShowAvailableOnly] = useState(true);
+  const [sortKey, setSortKey] = useState<SortKey>("rank");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [timeLeft, setTimeLeft] = useState(TIMER_SECONDS);
   const [chatMessages, setChatMessages] = useState<any[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [queue, setQueue] = useState<number[]>([]);
-  const [activeTab, setActiveTab] = useState<"players" | "board" | "roster">("players");
+  const [rightPanel, setRightPanel] = useState<"board" | "chat">("board");
   const timerRef = useRef<any>(null);
   const picksRef = useRef<any[]>([]);
   const membersRef = useRef<any[]>([]);
   const userRef = useRef<any>(null);
+  const chatEndRef = useRef<any>(null);
   const router = useRouter();
   const params = useParams();
   const leagueId = params.id as string;
@@ -52,6 +88,9 @@ export default function DraftPage() {
   useEffect(() => { picksRef.current = picks; }, [picks]);
   useEffect(() => { membersRef.current = members; }, [members]);
   useEffect(() => { userRef.current = user; }, [user]);
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages]);
 
   useEffect(() => {
     async function load() {
@@ -69,7 +108,7 @@ export default function DraftPage() {
 
       const { data: playersData } = await supabase
         .from("players").select("*, nfl_teams(name, abbreviation, seed)")
-        .eq("season", 2026).order("position");
+        .eq("season", 2026);
 
       const { data: picksData } = await supabase
         .from("draft_picks").select("*").eq("league_id", leagueId)
@@ -88,9 +127,7 @@ export default function DraftPage() {
     const picksSub = supabase
       .channel(`draft-picks-${leagueId}`)
       .on("postgres_changes", {
-        event: "INSERT",
-        schema: "public",
-        table: "draft_picks",
+        event: "INSERT", schema: "public", table: "draft_picks",
         filter: `league_id=eq.${leagueId}`
       }, (payload) => {
         const currentUser = userRef.current;
@@ -133,18 +170,17 @@ export default function DraftPage() {
   function getCurrentPickNumber() { return picks.length + 1; }
 
   function getPickOwner(pickNumber: number) {
-    const currentMembers = membersRef.current;
-    if (!currentMembers.length) return null;
-    const numTeams = currentMembers.length;
+    const m = membersRef.current;
+    if (!m.length) return null;
+    const numTeams = m.length;
     const round = Math.ceil(pickNumber / numTeams);
     const posInRound = ((pickNumber - 1) % numTeams);
     const index = round % 2 === 0 ? numTeams - 1 - posInRound : posInRound;
-    return currentMembers[index];
+    return m[index];
   }
 
   function isMyTurn() {
-    const owner = getPickOwner(getCurrentPickNumber());
-    return owner?.user_id === user?.id;
+    return getPickOwner(getCurrentPickNumber())?.user_id === user?.id;
   }
 
   function isPickedAlready(playerId: number) {
@@ -162,14 +198,22 @@ export default function DraftPage() {
     return getMyRoster().filter((p: any) => p.position === position);
   }
 
-  function getRosterSlotsFilled(position: string) {
-    return getRosterByPosition(position).length;
+  function toggleQueue(playerId: number) {
+    setQueue(prev => prev.includes(playerId) ? prev.filter(id => id !== playerId) : [...prev, playerId]);
   }
 
-  function toggleQueue(playerId: number) {
-    setQueue(prev =>
-      prev.includes(playerId) ? prev.filter(id => id !== playerId) : [...prev, playerId]
-    );
+  function handleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir(prev => prev === "asc" ? "desc" : "asc");
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  }
+
+  function SortIcon({ k }: { k: SortKey }) {
+    if (sortKey !== k) return <span className="text-gray-700 ml-1">↕</span>;
+    return <span className="text-green-400 ml-1">{sortDir === "asc" ? "↑" : "↓"}</span>;
   }
 
   async function makePick(playerId: number) {
@@ -210,8 +254,7 @@ export default function DraftPage() {
     const currentUser = userRef.current;
     const pickNumber = currentPicks.length + 1;
     const owner = getPickOwner(pickNumber);
-    if (!owner) return;
-    if (owner.user_id !== currentUser?.id) return;
+    if (!owner || owner.user_id !== currentUser?.id) return;
 
     const pickedIds = currentPicks.map((p: any) => p.player_id);
     const available = players.find(p => !pickedIds.includes(p.id));
@@ -221,7 +264,7 @@ export default function DraftPage() {
     const round = Math.ceil(pickNumber / numTeams);
     const pickInRound = ((pickNumber - 1) % numTeams) + 1;
 
-    const optimisticPick = {
+    setPicks(prev => [...prev, {
       id: `optimistic-auto-${Date.now()}`,
       league_id: leagueId,
       user_id: owner.user_id,
@@ -230,9 +273,7 @@ export default function DraftPage() {
       round,
       pick_in_round: pickInRound,
       is_auto_pick: true,
-    };
-
-    setPicks(prev => [...prev, optimisticPick]);
+    }]);
     setTimeLeft(TIMER_SECONDS);
 
     await supabase.from("draft_picks").insert({
@@ -254,9 +295,7 @@ export default function DraftPage() {
       team: myMember?.team_name || "Unknown",
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
-    await supabase.channel(`chat-${leagueId}`).send({
-      type: "broadcast", event: "chat", payload: message
-    });
+    await supabase.channel(`chat-${leagueId}`).send({ type: "broadcast", event: "chat", payload: message });
     setChatMessages(prev => [...prev, message]);
     setChatInput("");
   }
@@ -264,27 +303,36 @@ export default function DraftPage() {
   const totalPicks = members.length * TOTAL_PICKS_PER_TEAM;
   const draftComplete = picks.length >= totalPicks;
   const currentPickOwner = getPickOwner(getCurrentPickNumber());
+  const lastPick = picks.length > 0 ? picks[picks.length - 1] : null;
+  const lastPickPlayer = lastPick ? players.find(p => p.id === lastPick.player_id) : null;
+  const lastPickOwner = lastPick ? members.find(m => m.user_id === lastPick.user_id) : null;
+  const autoPickPlayer = players.find(p => !isPickedAlready(p.id));
+  const currentRound = Math.ceil(getCurrentPickNumber() / (members.length || 1));
 
   const queuedPlayers = queue
     .map(id => players.find(p => p.id === id))
     .filter(Boolean)
     .filter((p: any) => !isPickedAlready(p.id));
 
-  const filteredPlayers = players.filter(p => {
+  let filteredPlayers = players.filter(p => {
+    if (showAvailableOnly && isPickedAlready(p.id)) return false;
     if (positionFilter !== "ALL" && p.position !== positionFilter) return false;
     if (search && !p.name.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
-  function getPositionColor(position: string) {
-    switch (position) {
-      case "QB": return "bg-red-900 text-red-300";
-      case "RB": return "bg-blue-900 text-blue-300";
-      case "WR": return "bg-yellow-900 text-yellow-300";
-      case "TE": return "bg-purple-900 text-purple-300";
-      default: return "bg-gray-700 text-gray-300";
+  filteredPlayers = [...filteredPlayers].sort((a, b) => {
+    let aVal: any, bVal: any;
+    switch (sortKey) {
+      case "name": aVal = a.name; bVal = b.name; break;
+      case "seed": aVal = a.nfl_teams?.seed || 99; bVal = b.nfl_teams?.seed || 99; break;
+      case "proj": aVal = 0; bVal = 0; break;
+      default: aVal = players.indexOf(a); bVal = players.indexOf(b);
     }
-  }
+    if (aVal < bVal) return sortDir === "asc" ? -1 : 1;
+    if (aVal > bVal) return sortDir === "asc" ? 1 : -1;
+    return 0;
+  });
 
   if (loading) return (
     <main className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
@@ -293,305 +341,117 @@ export default function DraftPage() {
   );
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white">
+    <div className="h-screen bg-gray-950 text-white flex flex-col overflow-hidden">
 
-      {/* Draft Header */}
-      <div className="bg-gray-900 border-b border-gray-800 px-4 py-2 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto flex justify-between items-center">
+      {/* TOP BAR */}
+      <div className="bg-gray-900 border-b border-gray-800 flex-shrink-0">
+
+        {/* Row 1: Logo + Timer + Leave */}
+        <div className="px-4 py-2 flex items-center justify-between border-b border-gray-800">
           <div className="flex items-center gap-3">
             <PFFLLogo size={28} />
             <div>
               <p className="text-xs text-gray-500 leading-none">Draft Room</p>
-              <p className="text-sm font-bold text-white leading-none mt-0.5">{league?.name}</p>
+              <p className="text-sm font-bold leading-none mt-0.5">{league?.name}</p>
             </div>
           </div>
+
           <div className="text-center">
-            {!draftComplete && (
-              <p className="text-xs text-gray-500">Pick #{getCurrentPickNumber()} of {totalPicks}</p>
+            <div className={`text-4xl font-mono font-black ${timeLeft <= 10 ? "text-red-400 animate-pulse" : "text-green-400"}`}>
+              {draftComplete ? "✅" : `${String(Math.floor(timeLeft / 60)).padStart(2, "0")}:${String(timeLeft % 60).padStart(2, "0")}`}
+            </div>
+            <p className="text-xs text-gray-500">
+              {draftComplete ? "Complete" : `Round ${currentRound} · Pick ${getCurrentPickNumber()} of ${totalPicks}`}
+            </p>
+          </div>
+
+          <button
+            onClick={() => router.push(`/league/${leagueId}`)}
+            className="text-gray-500 hover:text-white text-sm border border-gray-700 px-3 py-1 rounded"
+          >
+            Leave Draft
+          </button>
+        </div>
+
+        {/* Row 2: Status + Last Pick + Auto Pick */}
+        <div className={`px-4 py-2 flex items-center justify-between ${isMyTurn() && !draftComplete ? "bg-green-900" : ""}`}>
+          <div className="flex-1">
+            {draftComplete ? (
+              <p className="font-bold text-green-400">🏆 Draft Complete!</p>
+            ) : isMyTurn() ? (
+              <p className="font-black text-green-300 text-lg">⚡ You are on the clock!</p>
+            ) : (
+              <p className="text-gray-300 text-sm">
+                On the clock: <span className="text-white font-bold">{currentPickOwner?.team_name}</span>
+              </p>
             )}
           </div>
-          <div className="flex items-center gap-4">
-            <div className={`text-2xl font-mono font-bold ${timeLeft <= 10 ? "text-red-400" : "text-green-400"}`}>
-              {draftComplete ? "✅" : `${timeLeft}s`}
-            </div>
-            <button
-              onClick={() => router.push(`/league/${leagueId}`)}
-              className="text-gray-500 hover:text-white text-xs"
-            >
-              Leave
-            </button>
+          <div className="flex gap-8 text-xs text-gray-400">
+            {lastPickPlayer && (
+              <div>
+                <p className="text-gray-600 uppercase tracking-wider">Last Pick</p>
+                <p className="text-white font-bold">{lastPickPlayer.name}</p>
+                <p className="text-gray-500">{lastPickPlayer.position} · {lastPickOwner?.team_name}</p>
+              </div>
+            )}
+            {autoPickPlayer && !draftComplete && (
+              <div>
+                <p className="text-gray-600 uppercase tracking-wider">Auto Pick</p>
+                <p className="text-white font-bold">{autoPickPlayer.name}</p>
+                <p className="text-gray-500">{autoPickPlayer.position} · {autoPickPlayer.nfl_teams?.abbreviation}</p>
+              </div>
+            )}
           </div>
         </div>
-      </div>
 
-      {/* Status Banner */}
-      <div className={`px-4 py-3 text-center ${isMyTurn() && !draftComplete ? "bg-green-700" : "bg-gray-800"}`}>
-        {draftComplete ? (
-          <p className="font-bold">Draft Complete! Check your roster.</p>
-        ) : isMyTurn() ? (
-          <p className="font-bold text-lg">⚡ You're on the clock!</p>
-        ) : (
-          <p className="text-gray-300">
-            Waiting on <span className="text-white font-bold">{currentPickOwner?.team_name}</span>
-          </p>
-        )}
-      </div>
-
-      {/* Team Strip */}
-      <div className="bg-gray-900 border-b border-gray-800 px-4 py-2 overflow-x-auto">
-        <div className="flex gap-3 min-w-max">
-          {members.map((member) => {
-            const memberPicks = picks.filter(p => p.user_id === member.user_id);
-            const isOnClock = currentPickOwner?.user_id === member.user_id && !draftComplete;
-            const isMe = member.user_id === user?.id;
-            return (
-              <div key={member.id} className={`flex flex-col items-center min-w-16 ${isOnClock ? "opacity-100" : "opacity-60"}`}>
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold mb-1 ${
-                  isMe ? "bg-green-600" : "bg-gray-700"
-                } ${isOnClock ? "ring-2 ring-yellow-400" : ""}`}>
-                  {member.team_name.charAt(0).toUpperCase()}
-                </div>
-                <p className="text-xs text-gray-400 truncate max-w-16 text-center">{member.team_name}</p>
-                <p className="text-xs text-gray-600">{memberPicks.length} picks</p>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Tab Navigation */}
-      <div className="bg-gray-900 border-b border-gray-800 px-4">
-        <div className="flex">
-          {[
-            { id: "players", label: "Players" },
-            { id: "board", label: "Board" },
-            { id: "roster", label: `My Roster (${getMyRoster().length})` },
-          ].map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`px-4 py-3 text-sm font-bold border-b-2 ${
-                activeTab === tab.id
-                  ? "border-green-500 text-green-400"
-                  : "border-transparent text-gray-400 hover:text-white"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto p-4">
-
-        {/* Players Tab */}
-        {activeTab === "players" && (
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-            <div className="lg:col-span-3">
-              {queuedPlayers.length > 0 && (
-                <div className="bg-blue-900 rounded-lg p-3 mb-4">
-                  <h3 className="text-sm font-bold text-blue-300 mb-2">Your Queue ({queuedPlayers.length})</h3>
-                  <div className="flex flex-col gap-1">
-                    {queuedPlayers.map((player: any) => (
-                      <div key={player.id} className="flex justify-between items-center bg-blue-800 p-2 rounded">
-                        <div>
-                          <span className="font-bold text-sm">{player.name}</span>
-                          <span className="text-blue-300 text-xs ml-2">{player.nfl_teams?.abbreviation} · {player.position}</span>
-                        </div>
-                        <div className="flex gap-2">
-                          {isMyTurn() && (
-                            <button onClick={() => makePick(player.id)} className="bg-green-600 hover:bg-green-500 text-white text-xs font-bold px-3 py-1 rounded">
-                              Draft
-                            </button>
-                          )}
-                          <button onClick={() => toggleQueue(player.id)} className="text-blue-300 hover:text-white text-xs px-2 py-1">✕</button>
-                        </div>
-                      </div>
-                    ))}
+        {/* Row 3: Team Strip */}
+        <div className="px-4 py-2 overflow-x-auto border-t border-gray-800">
+          <div className="flex gap-4 min-w-max">
+            {members.map((member) => {
+              const memberPicks = picks.filter(p => p.user_id === member.user_id);
+              const isOnClock = currentPickOwner?.user_id === member.user_id && !draftComplete;
+              const isMe = member.user_id === user?.id;
+              return (
+                <div key={member.id} className={`flex flex-col items-center ${isOnClock ? "opacity-100" : "opacity-50"}`}>
+                  <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-black mb-1 ${
+                    isMe ? "bg-green-600" : "bg-gray-700"
+                  } ${isOnClock ? "ring-2 ring-yellow-400 ring-offset-1 ring-offset-gray-900" : ""}`}>
+                    {member.team_name.charAt(0).toUpperCase()}
                   </div>
+                  <p className="text-xs text-gray-400 truncate max-w-16 text-center">{member.team_name}</p>
+                  <p className="text-xs text-gray-600">{memberPicks.length}/{TOTAL_PICKS_PER_TEAM}</p>
                 </div>
-              )}
-
-              <div className="flex gap-2 mb-3 flex-wrap">
-                <input
-                  type="text"
-                  placeholder="Search players..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="bg-gray-800 text-white p-2 rounded text-sm flex-1 min-w-32"
-                />
-                {["ALL", "QB", "RB", "WR", "TE", "K", "DST"].map(pos => (
-                  <button
-                    key={pos}
-                    onClick={() => setPositionFilter(pos)}
-                    className={`px-3 py-2 rounded text-xs font-bold ${positionFilter === pos ? "bg-green-600 text-white" : "bg-gray-800 text-gray-300 hover:bg-gray-700"}`}
-                  >
-                    {pos}
-                  </button>
-                ))}
-              </div>
-
-              <div className="grid grid-cols-12 text-xs text-gray-500 px-2 mb-1">
-                <span className="col-span-1">RK</span>
-                <span className="col-span-5">PLAYER</span>
-                <span className="col-span-1">SEED</span>
-                <span className="col-span-2">POS</span>
-                <span className="col-span-3 text-right">ACTION</span>
-              </div>
-
-              <div className="flex flex-col gap-1">
-                {filteredPlayers.map((player, index) => {
-                  const picked = isPickedAlready(player.id);
-                  const inQueue = queue.includes(player.id);
-                  return (
-                    <div
-                      key={player.id}
-                      className={`grid grid-cols-12 items-center p-2 rounded text-sm ${picked ? "opacity-25 bg-gray-900" : "bg-gray-800"}`}
-                    >
-                      <span className="col-span-1 text-gray-500 text-xs">{index + 1}</span>
-                      <div className="col-span-5">
-                        <p className={`font-bold ${picked ? "line-through text-gray-500" : "text-white"}`}>{player.name}</p>
-                        <p className="text-xs text-gray-400">{player.nfl_teams?.abbreviation}</p>
-                      </div>
-                      <span className="col-span-1 text-xs text-gray-400">{player.nfl_teams?.seed}</span>
-                      <span className={`col-span-2 text-xs font-bold px-2 py-1 rounded w-fit ${getPositionColor(player.position)}`}>
-                        {player.position}
-                      </span>
-                      <div className="col-span-3 flex gap-1 justify-end">
-                        {!picked && (
-                          <>
-                            <button
-                              onClick={() => toggleQueue(player.id)}
-                              className={`text-xs px-2 py-1 rounded ${inQueue ? "bg-blue-700 text-white" : "bg-gray-700 text-gray-300 hover:bg-gray-600"}`}
-                            >
-                              {inQueue ? "★" : "☆"}
-                            </button>
-                            {isMyTurn() && (
-                              <button
-                                onClick={() => makePick(player.id)}
-                                className="bg-green-600 hover:bg-green-500 text-white text-xs font-bold px-3 py-1 rounded"
-                              >
-                                Draft
-                              </button>
-                            )}
-                          </>
-                        )}
-                        {picked && <span className="text-xs text-gray-600">Drafted</span>}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="lg:col-span-1">
-              <div className="bg-gray-900 rounded-lg p-4 flex flex-col h-full">
-                <h2 className="font-bold mb-3 text-sm">Smack Talk 💬</h2>
-                <div className="overflow-y-auto flex-1 max-h-96 flex flex-col gap-2 mb-3">
-                  {chatMessages.length === 0 ? (
-                    <p className="text-gray-600 text-xs">No messages yet...</p>
-                  ) : (
-                    chatMessages.map((msg, i) => (
-                      <div key={i} className="text-xs">
-                        <span className="text-green-400 font-bold">{msg.team}</span>
-                        <span className="text-gray-500 ml-1">{msg.time}</span>
-                        <p className="text-white mt-1">{msg.text}</p>
-                      </div>
-                    ))
-                  )}
-                </div>
-                <div className="flex flex-col gap-2">
-                  <input
-                    type="text"
-                    placeholder="Talk trash..."
-                    value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && sendChat()}
-                    className="w-full bg-gray-800 text-white p-2 rounded text-xs"
-                  />
-                  <button onClick={sendChat} className="bg-green-600 hover:bg-green-500 text-white font-bold px-3 py-2 rounded text-xs">
-                    Send
-                  </button>
-                </div>
-              </div>
-            </div>
+              );
+            })}
           </div>
-        )}
+        </div>
+      </div>
 
-        {/* Board Tab */}
-        {activeTab === "board" && (
-          <div className="overflow-x-auto">
-            <div className="flex flex-col gap-1 min-w-max">
-              <div className="flex gap-1 mb-2">
-                <div className="w-16 text-xs text-gray-500">Round</div>
-                {members.map(member => (
-                  <div key={member.id} className="w-32 text-xs text-gray-400 text-center truncate">{member.team_name}</div>
-                ))}
-              </div>
-              {Array.from({ length: TOTAL_PICKS_PER_TEAM }, (_, roundIdx) => {
-                const round = roundIdx + 1;
-                const isEvenRound = round % 2 === 0;
-                const roundMembers = isEvenRound ? [...members].reverse() : members;
-                return (
-                  <div key={round} className="flex gap-1 items-start">
-                    <div className="w-16 text-xs text-gray-500 pt-2">Rd {round}</div>
-                    {roundMembers.map((member, idx) => {
-                      const pickNum = (round - 1) * members.length + idx + 1;
-                      const pick = picks.find(p => p.pick_number === pickNum);
-                      const player = pick ? players.find(pl => pl.id === pick.player_id) : null;
-                      const isCurrent = pickNum === getCurrentPickNumber() && !draftComplete;
-                      const isMe = member.user_id === user?.id;
-                      return (
-                        <div
-                          key={member.id}
-                          className={`w-32 p-2 rounded text-xs min-h-12 ${
-                            isCurrent ? "bg-green-900 border border-green-500" :
-                            player ? (isMe ? "bg-green-950 border border-green-800" : "bg-gray-800") :
-                            "bg-gray-900 border border-dashed border-gray-800"
-                          }`}
-                        >
-                          {player ? (
-                            <>
-                              <p className="font-bold text-white truncate">{player.name}</p>
-                              <p className="text-gray-400">{player.position} · {player.nfl_teams?.abbreviation}</p>
-                            </>
-                          ) : isCurrent ? (
-                            <p className="text-green-400 animate-pulse">On clock...</p>
-                          ) : (
-                            <p className="text-gray-700">—</p>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })}
-            </div>
+      {/* MAIN CONTENT — 3 panels */}
+      <div className="flex flex-1 overflow-hidden">
+
+        {/* LEFT PANEL: My Roster */}
+        <div className="w-52 flex-shrink-0 bg-gray-900 border-r border-gray-800 flex flex-col">
+          <div className="px-3 py-2 border-b border-gray-800">
+            <p className="text-xs font-black text-gray-400 uppercase tracking-wider">My Roster ({getMyRoster().length}/{TOTAL_PICKS_PER_TEAM})</p>
           </div>
-        )}
-
-        {/* Roster Tab */}
-        {activeTab === "roster" && (
-          <div className="max-w-lg">
-            <h2 className="font-bold mb-4 text-lg">My Roster</h2>
+          <div className="overflow-y-auto flex-1 px-2 py-2">
             {Object.entries(ROSTER_SLOTS).map(([pos, slots]) => (
-              <div key={pos} className="mb-4">
-                <div className="flex justify-between text-xs text-gray-400 mb-2">
-                  <span className={`font-bold px-2 py-1 rounded ${getPositionColor(pos)}`}>{pos}</span>
-                  <span>{getRosterSlotsFilled(pos)}/{slots} filled</span>
+              <div key={pos} className="mb-3">
+                <div className="flex justify-between items-center mb-1">
+                  <span className={`text-xs font-black px-1.5 py-0.5 rounded ${getPositionBadge(pos)}`}>{pos}</span>
+                  <span className="text-xs text-gray-600">{getRosterByPosition(pos).length}/{slots}</span>
                 </div>
                 {Array.from({ length: slots }, (_, i) => {
                   const player = getRosterByPosition(pos)[i];
                   return (
-                    <div key={i} className={`p-3 rounded mb-1 ${player ? "bg-gray-800" : "bg-gray-900 border border-dashed border-gray-700"}`}>
+                    <div key={i} className={`px-2 py-1.5 rounded mb-0.5 text-xs ${
+                      player ? "bg-gray-800" : "bg-gray-900 border border-dashed border-gray-800"
+                    }`}>
                       {player ? (
-                        <div className="flex justify-between items-center">
-                          <span className="font-bold">{player.name}</span>
-                          <span className="text-gray-400 text-xs">{player.nfl_teams?.abbreviation} · Seed {player.nfl_teams?.seed}</span>
-                        </div>
+                        <p className="font-bold text-white truncate">{player.name}</p>
                       ) : (
-                        <span className="text-gray-600 text-xs">Empty slot</span>
+                        <p className="text-gray-700">Empty</p>
                       )}
                     </div>
                   );
@@ -599,8 +459,226 @@ export default function DraftPage() {
               </div>
             ))}
           </div>
-        )}
+        </div>
+
+        {/* CENTER PANEL: Player List */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+
+          {/* Queue */}
+          {queuedPlayers.length > 0 && (
+            <div className="bg-blue-950 border-b border-blue-800 px-3 py-2 flex-shrink-0">
+              <div className="flex items-center gap-2 mb-1">
+                <p className="text-xs font-bold text-blue-300">Queue ({queuedPlayers.length})</p>
+              </div>
+              <div className="flex gap-2 overflow-x-auto">
+                {queuedPlayers.map((player: any) => (
+                  <div key={player.id} className="flex items-center gap-2 bg-blue-900 rounded px-2 py-1 flex-shrink-0">
+                    <span className="text-xs font-bold text-white">{player.name}</span>
+                    <span className="text-xs text-blue-300">{player.position}</span>
+                    {isMyTurn() && (
+                      <button onClick={() => makePick(player.id)} className="bg-green-600 text-white text-xs px-2 py-0.5 rounded font-bold">Draft</button>
+                    )}
+                    <button onClick={() => toggleQueue(player.id)} className="text-blue-400 hover:text-white text-xs">✕</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Filters */}
+          <div className="px-3 py-2 border-b border-gray-800 flex-shrink-0 bg-gray-900">
+            <div className="flex gap-2 mb-2">
+              <input
+                type="text"
+                placeholder="Search players..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="bg-gray-800 text-white p-2 rounded text-sm flex-1 border border-gray-700 focus:outline-none focus:border-green-500"
+              />
+              <button
+                onClick={() => setShowAvailableOnly(!showAvailableOnly)}
+                className={`px-3 py-2 rounded text-xs font-bold border ${
+                  showAvailableOnly
+                    ? "bg-green-700 border-green-600 text-white"
+                    : "bg-gray-800 border-gray-700 text-gray-300"
+                }`}
+              >
+                {showAvailableOnly ? "Available" : "All Players"}
+              </button>
+            </div>
+            <div className="flex gap-1 flex-wrap">
+              {["ALL", "QB", "RB", "WR", "TE", "K", "DST"].map(pos => (
+                <button
+                  key={pos}
+                  onClick={() => setPositionFilter(pos)}
+                  className={`px-2 py-1 rounded text-xs font-bold ${
+                    positionFilter === pos ? "bg-green-600 text-white" : "bg-gray-800 text-gray-400 hover:bg-gray-700"
+                  }`}
+                >
+                  {pos}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Column Headers */}
+          <div className="px-3 py-1.5 border-b border-gray-800 bg-gray-900 flex-shrink-0">
+            <div className="grid text-xs text-gray-500 font-bold uppercase" style={{ gridTemplateColumns: "2rem 2.5rem 1fr 4rem 4rem 4rem 6rem" }}>
+              <button onClick={() => handleSort("rank")} className="text-left hover:text-gray-300">
+                RK<SortIcon k="rank" />
+              </button>
+              <span></span>
+              <button onClick={() => handleSort("name")} className="text-left hover:text-gray-300">
+                PLAYER<SortIcon k="name" />
+              </button>
+              <button onClick={() => handleSort("seed")} className="text-right hover:text-gray-300">
+                SEED<SortIcon k="seed" />
+              </button>
+              <button onClick={() => handleSort("proj")} className="text-right hover:text-gray-300">
+                PROJ<SortIcon k="proj" />
+              </button>
+              <span className="text-right">POS</span>
+              <span className="text-right">ACTION</span>
+            </div>
+          </div>
+
+          {/* Player Rows */}
+          <div className="overflow-y-auto flex-1">
+            {filteredPlayers.map((player, index) => {
+              const picked = isPickedAlready(player.id);
+              const inQueue = queue.includes(player.id);
+              return (
+                <div
+                  key={player.id}
+                  className={`px-3 py-2 border-b border-gray-800 grid items-center ${
+                    picked ? "opacity-30" : "hover:bg-gray-900"
+                  }`}
+                  style={{ gridTemplateColumns: "2rem 2.5rem 1fr 4rem 4rem 4rem 6rem" }}
+                >
+                  <span className="text-xs text-gray-600">{index + 1}</span>
+                  <PlayerAvatar name={player.name} position={player.position} />
+                  <div className="pl-2 min-w-0">
+                    <p className={`font-bold text-sm truncate ${picked ? "line-through text-gray-500" : "text-white"}`}>
+                      {player.name}
+                    </p>
+                    <p className="text-xs text-gray-500">{player.nfl_teams?.abbreviation}</p>
+                  </div>
+                  <span className="text-xs text-gray-400 text-right">{player.nfl_teams?.seed || "—"}</span>
+                  <span className="text-xs text-blue-600 text-right">—</span>
+                  <span className={`text-xs font-bold px-1.5 py-0.5 rounded text-center justify-self-end ${getPositionBadge(player.position)}`}>
+                    {player.position}
+                  </span>
+                  <div className="flex gap-1 justify-end">
+                    {!picked ? (
+                      <>
+                        <button
+                          onClick={() => toggleQueue(player.id)}
+                          className={`text-xs px-1.5 py-1 rounded ${inQueue ? "bg-blue-700 text-white" : "bg-gray-800 text-gray-500 hover:bg-gray-700"}`}
+                        >
+                          {inQueue ? "★" : "☆"}
+                        </button>
+                        {isMyTurn() && (
+                          <button
+                            onClick={() => makePick(player.id)}
+                            className="bg-green-600 hover:bg-green-500 text-white text-xs font-bold px-3 py-1 rounded"
+                          >
+                            Draft
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-xs text-gray-700">Drafted</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* RIGHT PANEL: Board + Chat */}
+        <div className="w-64 flex-shrink-0 bg-gray-900 border-l border-gray-800 flex flex-col">
+
+          {/* Right Panel Tabs */}
+          <div className="flex border-b border-gray-800 flex-shrink-0">
+            <button
+              onClick={() => setRightPanel("board")}
+              className={`flex-1 py-2 text-xs font-bold ${rightPanel === "board" ? "text-green-400 border-b-2 border-green-500" : "text-gray-500 hover:text-white"}`}
+            >
+              Draft Board
+            </button>
+            <button
+              onClick={() => setRightPanel("chat")}
+              className={`flex-1 py-2 text-xs font-bold ${rightPanel === "chat" ? "text-green-400 border-b-2 border-green-500" : "text-gray-500 hover:text-white"}`}
+            >
+              Smack Talk 💬
+            </button>
+          </div>
+
+          {/* Draft Board */}
+          {rightPanel === "board" && (
+            <div className="overflow-y-auto flex-1 px-2 py-2">
+              {picks.length === 0 ? (
+                <p className="text-gray-600 text-xs text-center mt-4">No picks yet</p>
+              ) : (
+                [...picks].reverse().map((pick) => {
+                  const player = players.find(p => p.id === pick.player_id);
+                  const owner = members.find(m => m.user_id === pick.user_id);
+                  const isMe = pick.user_id === user?.id;
+                  return (
+                    <div key={pick.id} className={`flex items-center gap-2 px-2 py-2 rounded mb-1 ${isMe ? "bg-green-950" : "bg-gray-800"}`}>
+                      <span className="text-xs text-gray-600 w-6 text-right flex-shrink-0">{pick.pick_number}</span>
+                      {player && <PlayerAvatar name={player.name} position={player.position} />}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-bold text-white truncate">{player?.name}</p>
+                        <p className="text-xs text-gray-500 truncate">{player?.position} · {owner?.team_name}</p>
+                      </div>
+                      {pick.is_auto_pick && <span className="text-xs text-yellow-600 flex-shrink-0">AUTO</span>}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
+
+          {/* Chat */}
+          {rightPanel === "chat" && (
+            <div className="flex flex-col flex-1 overflow-hidden">
+              <div className="overflow-y-auto flex-1 px-3 py-2">
+                {chatMessages.length === 0 ? (
+                  <p className="text-gray-600 text-xs text-center mt-4">No messages yet...</p>
+                ) : (
+                  chatMessages.map((msg, i) => (
+                    <div key={i} className="mb-3">
+                      <div className="flex items-center gap-1 mb-0.5">
+                        <span className="text-green-400 text-xs font-bold">{msg.team}</span>
+                        <span className="text-gray-600 text-xs">{msg.time}</span>
+                      </div>
+                      <p className="text-white text-xs">{msg.text}</p>
+                    </div>
+                  ))
+                )}
+                <div ref={chatEndRef} />
+              </div>
+              <div className="px-3 py-2 border-t border-gray-800 flex-shrink-0">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Talk trash..."
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && sendChat()}
+                    className="flex-1 bg-gray-800 text-white p-2 rounded text-xs border border-gray-700 focus:outline-none focus:border-green-500"
+                  />
+                  <button onClick={sendChat} className="bg-green-600 hover:bg-green-500 text-white font-bold px-3 py-2 rounded text-xs">
+                    Send
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
-    </main>
+    </div>
   );
 }
