@@ -216,6 +216,14 @@ export default function DraftPage() {
     return <span className="text-green-400 ml-1">{sortDir === "asc" ? "↑" : "↓"}</span>;
   }
 
+  function handleLeaveDraft() {
+    if (window.opener) {
+      window.close();
+    } else {
+      router.push(`/league/${leagueId}`);
+    }
+  }
+
   async function makePick(playerId: number) {
     if (!isMyTurn()) return;
     const pickNumber = getCurrentPickNumber();
@@ -366,8 +374,8 @@ export default function DraftPage() {
           </div>
 
           <button
-            onClick={() => router.push(`/league/${leagueId}`)}
-            className="text-gray-500 hover:text-white text-sm border border-gray-700 px-3 py-1 rounded"
+            onClick={handleLeaveDraft}
+            className="text-gray-500 hover:text-white text-sm border border-gray-700 px-3 py-1 rounded hover:border-gray-500 transition-colors"
           >
             Leave Draft
           </button>
@@ -386,17 +394,17 @@ export default function DraftPage() {
               </p>
             )}
           </div>
-          <div className="flex gap-8 text-xs text-gray-400">
+          <div className="flex gap-8 text-xs">
             {lastPickPlayer && (
-              <div>
-                <p className="text-gray-600 uppercase tracking-wider">Last Pick</p>
+              <div className="text-right">
+                <p className="text-gray-600 uppercase tracking-wider text-xs mb-0.5">Last Pick</p>
                 <p className="text-white font-bold">{lastPickPlayer.name}</p>
                 <p className="text-gray-500">{lastPickPlayer.position} · {lastPickOwner?.team_name}</p>
               </div>
             )}
             {autoPickPlayer && !draftComplete && (
-              <div>
-                <p className="text-gray-600 uppercase tracking-wider">Auto Pick</p>
+              <div className="text-right">
+                <p className="text-gray-600 uppercase tracking-wider text-xs mb-0.5">Auto Pick Would Be</p>
                 <p className="text-white font-bold">{autoPickPlayer.name}</p>
                 <p className="text-gray-500">{autoPickPlayer.position} · {autoPickPlayer.nfl_teams?.abbreviation}</p>
               </div>
@@ -432,10 +440,12 @@ export default function DraftPage() {
 
         {/* LEFT PANEL: My Roster */}
         <div className="w-52 flex-shrink-0 bg-gray-900 border-r border-gray-800 flex flex-col">
-          <div className="px-3 py-2 border-b border-gray-800">
-            <p className="text-xs font-black text-gray-400 uppercase tracking-wider">My Roster ({getMyRoster().length}/{TOTAL_PICKS_PER_TEAM})</p>
+          <div className="px-3 py-2 border-b border-gray-800 flex-shrink-0">
+            <p className="text-xs font-black text-gray-400 uppercase tracking-wider">
+              My Roster ({getMyRoster().length}/{TOTAL_PICKS_PER_TEAM})
+            </p>
           </div>
-          <div className="overflow-y-auto flex-1 px-2 py-2">
+          <div className="overflow-y-auto flex-1 px-2 py-2 pb-6">
             {Object.entries(ROSTER_SLOTS).map(([pos, slots]) => (
               <div key={pos} className="mb-3">
                 <div className="flex justify-between items-center mb-1">
@@ -467,16 +477,16 @@ export default function DraftPage() {
           {/* Queue */}
           {queuedPlayers.length > 0 && (
             <div className="bg-blue-950 border-b border-blue-800 px-3 py-2 flex-shrink-0">
-              <div className="flex items-center gap-2 mb-1">
-                <p className="text-xs font-bold text-blue-300">Queue ({queuedPlayers.length})</p>
-              </div>
-              <div className="flex gap-2 overflow-x-auto">
+              <p className="text-xs font-bold text-blue-300 mb-1">Queue ({queuedPlayers.length})</p>
+              <div className="flex gap-2 overflow-x-auto pb-1">
                 {queuedPlayers.map((player: any) => (
                   <div key={player.id} className="flex items-center gap-2 bg-blue-900 rounded px-2 py-1 flex-shrink-0">
                     <span className="text-xs font-bold text-white">{player.name}</span>
                     <span className="text-xs text-blue-300">{player.position}</span>
                     {isMyTurn() && (
-                      <button onClick={() => makePick(player.id)} className="bg-green-600 text-white text-xs px-2 py-0.5 rounded font-bold">Draft</button>
+                      <button onClick={() => makePick(player.id)} className="bg-green-600 text-white text-xs px-2 py-0.5 rounded font-bold">
+                        Draft
+                      </button>
                     )}
                     <button onClick={() => toggleQueue(player.id)} className="text-blue-400 hover:text-white text-xs">✕</button>
                   </div>
@@ -497,13 +507,13 @@ export default function DraftPage() {
               />
               <button
                 onClick={() => setShowAvailableOnly(!showAvailableOnly)}
-                className={`px-3 py-2 rounded text-xs font-bold border ${
+                className={`px-3 py-2 rounded text-xs font-bold border whitespace-nowrap ${
                   showAvailableOnly
                     ? "bg-green-700 border-green-600 text-white"
-                    : "bg-gray-800 border-gray-700 text-gray-300"
+                    : "bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700"
                 }`}
               >
-                {showAvailableOnly ? "Available" : "All Players"}
+                {showAvailableOnly ? "✓ Available Only" : "All Players"}
               </button>
             </div>
             <div className="flex gap-1 flex-wrap">
@@ -523,18 +533,19 @@ export default function DraftPage() {
 
           {/* Column Headers */}
           <div className="px-3 py-1.5 border-b border-gray-800 bg-gray-900 flex-shrink-0">
-            <div className="grid text-xs text-gray-500 font-bold uppercase" style={{ gridTemplateColumns: "2rem 2.5rem 1fr 4rem 4rem 4rem 6rem" }}>
-              <button onClick={() => handleSort("rank")} className="text-left hover:text-gray-300">
+            <div className="grid text-xs text-gray-500 font-bold uppercase"
+              style={{ gridTemplateColumns: "2rem 2.5rem 1fr 4rem 4rem 4rem 6rem" }}>
+              <button onClick={() => handleSort("rank")} className="text-left hover:text-gray-300 flex items-center">
                 RK<SortIcon k="rank" />
               </button>
               <span></span>
-              <button onClick={() => handleSort("name")} className="text-left hover:text-gray-300">
+              <button onClick={() => handleSort("name")} className="text-left hover:text-gray-300 flex items-center">
                 PLAYER<SortIcon k="name" />
               </button>
-              <button onClick={() => handleSort("seed")} className="text-right hover:text-gray-300">
+              <button onClick={() => handleSort("seed")} className="text-right hover:text-gray-300 flex items-center justify-end">
                 SEED<SortIcon k="seed" />
               </button>
-              <button onClick={() => handleSort("proj")} className="text-right hover:text-gray-300">
+              <button onClick={() => handleSort("proj")} className="text-right hover:text-gray-300 flex items-center justify-end">
                 PROJ<SortIcon k="proj" />
               </button>
               <span className="text-right">POS</span>
@@ -543,15 +554,15 @@ export default function DraftPage() {
           </div>
 
           {/* Player Rows */}
-          <div className="overflow-y-auto flex-1">
+          <div className="overflow-y-auto flex-1 pb-6">
             {filteredPlayers.map((player, index) => {
               const picked = isPickedAlready(player.id);
               const inQueue = queue.includes(player.id);
               return (
                 <div
                   key={player.id}
-                  className={`px-3 py-2 border-b border-gray-800 grid items-center ${
-                    picked ? "opacity-30" : "hover:bg-gray-900"
+                  className={`px-3 py-2 border-b border-gray-800 grid items-center transition-colors ${
+                    picked ? "opacity-30 bg-gray-950" : "hover:bg-gray-900"
                   }`}
                   style={{ gridTemplateColumns: "2rem 2.5rem 1fr 4rem 4rem 4rem 6rem" }}
                 >
@@ -573,6 +584,7 @@ export default function DraftPage() {
                       <>
                         <button
                           onClick={() => toggleQueue(player.id)}
+                          title={inQueue ? "Remove from queue" : "Add to queue"}
                           className={`text-xs px-1.5 py-1 rounded ${inQueue ? "bg-blue-700 text-white" : "bg-gray-800 text-gray-500 hover:bg-gray-700"}`}
                         >
                           {inQueue ? "★" : "☆"}
@@ -593,6 +605,7 @@ export default function DraftPage() {
                 </div>
               );
             })}
+            <div className="h-4" />
           </div>
         </div>
 
@@ -603,13 +616,17 @@ export default function DraftPage() {
           <div className="flex border-b border-gray-800 flex-shrink-0">
             <button
               onClick={() => setRightPanel("board")}
-              className={`flex-1 py-2 text-xs font-bold ${rightPanel === "board" ? "text-green-400 border-b-2 border-green-500" : "text-gray-500 hover:text-white"}`}
+              className={`flex-1 py-2 text-xs font-bold border-b-2 transition-colors ${
+                rightPanel === "board" ? "text-green-400 border-green-500" : "text-gray-500 border-transparent hover:text-white"
+              }`}
             >
               Draft Board
             </button>
             <button
               onClick={() => setRightPanel("chat")}
-              className={`flex-1 py-2 text-xs font-bold ${rightPanel === "chat" ? "text-green-400 border-b-2 border-green-500" : "text-gray-500 hover:text-white"}`}
+              className={`flex-1 py-2 text-xs font-bold border-b-2 transition-colors ${
+                rightPanel === "chat" ? "text-green-400 border-green-500" : "text-gray-500 border-transparent hover:text-white"
+              }`}
             >
               Smack Talk 💬
             </button>
@@ -617,17 +634,17 @@ export default function DraftPage() {
 
           {/* Draft Board */}
           {rightPanel === "board" && (
-            <div className="overflow-y-auto flex-1 px-2 py-2">
+            <div className="overflow-y-auto flex-1 px-2 py-2 pb-6">
               {picks.length === 0 ? (
-                <p className="text-gray-600 text-xs text-center mt-4">No picks yet</p>
+                <p className="text-gray-600 text-xs text-center mt-8">No picks yet — draft is about to begin!</p>
               ) : (
                 [...picks].reverse().map((pick) => {
                   const player = players.find(p => p.id === pick.player_id);
                   const owner = members.find(m => m.user_id === pick.user_id);
                   const isMe = pick.user_id === user?.id;
                   return (
-                    <div key={pick.id} className={`flex items-center gap-2 px-2 py-2 rounded mb-1 ${isMe ? "bg-green-950" : "bg-gray-800"}`}>
-                      <span className="text-xs text-gray-600 w-6 text-right flex-shrink-0">{pick.pick_number}</span>
+                    <div key={pick.id} className={`flex items-center gap-2 px-2 py-2 rounded mb-1 ${isMe ? "bg-green-950 border border-green-900" : "bg-gray-800"}`}>
+                      <span className="text-xs text-gray-600 w-6 text-right flex-shrink-0 font-mono">{pick.pick_number}</span>
                       {player && <PlayerAvatar name={player.name} position={player.position} />}
                       <div className="min-w-0 flex-1">
                         <p className="text-xs font-bold text-white truncate">{player?.name}</p>
@@ -638,15 +655,16 @@ export default function DraftPage() {
                   );
                 })
               )}
+              <div className="h-4" />
             </div>
           )}
 
           {/* Chat */}
           {rightPanel === "chat" && (
             <div className="flex flex-col flex-1 overflow-hidden">
-              <div className="overflow-y-auto flex-1 px-3 py-2">
+              <div className="overflow-y-auto flex-1 px-3 py-2 pb-2">
                 {chatMessages.length === 0 ? (
-                  <p className="text-gray-600 text-xs text-center mt-4">No messages yet...</p>
+                  <p className="text-gray-600 text-xs text-center mt-8">No messages yet...<br/>Say something!</p>
                 ) : (
                   chatMessages.map((msg, i) => (
                     <div key={i} className="mb-3">
@@ -660,7 +678,7 @@ export default function DraftPage() {
                 )}
                 <div ref={chatEndRef} />
               </div>
-              <div className="px-3 py-2 border-t border-gray-800 flex-shrink-0">
+              <div className="px-3 py-3 border-t border-gray-800 flex-shrink-0">
                 <div className="flex gap-2">
                   <input
                     type="text"
@@ -670,7 +688,10 @@ export default function DraftPage() {
                     onKeyDown={(e) => e.key === "Enter" && sendChat()}
                     className="flex-1 bg-gray-800 text-white p-2 rounded text-xs border border-gray-700 focus:outline-none focus:border-green-500"
                   />
-                  <button onClick={sendChat} className="bg-green-600 hover:bg-green-500 text-white font-bold px-3 py-2 rounded text-xs">
+                  <button
+                    onClick={sendChat}
+                    className="bg-green-600 hover:bg-green-500 text-white font-bold px-3 py-2 rounded text-xs"
+                  >
                     Send
                   </button>
                 </div>

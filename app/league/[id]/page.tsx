@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { useRouter, useParams } from "next/navigation";
-import Nav from "@/app/components/Nav";
+import Nav from "../../components/Nav";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -45,6 +45,14 @@ export default function LeaguePage() {
     setTimeout(() => setCopied(false), 2000);
   }
 
+  function openDraftRoom() {
+    window.open(
+      `/draft/${leagueId}`,
+      'draftroom',
+      'width=1400,height=900,scrollbars=no,resizable=yes'
+    );
+  }
+
   if (loading) return (
     <main className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
       <p>Loading...</p>
@@ -75,7 +83,7 @@ export default function LeaguePage() {
 
         {/* League Header Card */}
         <div className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800">
-          <div className="flex justify-between items-start">
+          <div className="flex justify-between items-start mb-6">
             <div>
               <h1 className="text-2xl font-black mb-1">{league.name}</h1>
               <div className="flex gap-3 text-sm text-gray-400">
@@ -96,7 +104,7 @@ export default function LeaguePage() {
           </div>
 
           {/* Stats Row */}
-          <div className="grid grid-cols-3 gap-4 mt-6">
+          <div className="grid grid-cols-3 gap-4 mb-6">
             <div className="text-center">
               <p className="text-2xl font-black text-white">{members.length}/{league.num_teams}</p>
               <p className="text-xs text-gray-500 mt-1">Teams Joined</p>
@@ -110,24 +118,34 @@ export default function LeaguePage() {
               <p className="text-xs text-gray-500 mt-1">Playoff Weeks</p>
             </div>
           </div>
+
+          {/* Draft Room Button */}
+          <button
+            onClick={openDraftRoom}
+            className="w-full bg-green-600 hover:bg-green-500 text-white font-black py-3 rounded-lg text-lg transition-colors"
+          >
+            🏈 Enter Draft Room
+          </button>
         </div>
 
         {/* Teams List */}
         <div className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800">
-          <h2 className="font-bold mb-4 text-gray-300 uppercase text-xs tracking-wider">Teams</h2>
-          <div className="flex flex-col gap-2">
+          <h2 className="font-bold mb-4 text-gray-300 uppercase text-xs tracking-wider">
+            Teams ({members.length}/{league.num_teams})
+          </h2>
+          <div className="flex flex-col gap-1">
             {members.map((member, i) => (
-              <div key={member.id} className="flex items-center gap-3 py-2 border-b border-gray-800 last:border-0">
-                <div className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center text-sm font-black">
+              <div key={member.id} className="flex items-center gap-3 py-2.5 border-b border-gray-800 last:border-0">
+                <div className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center text-sm font-black flex-shrink-0">
                   {member.team_name.charAt(0).toUpperCase()}
                 </div>
-                <div className="flex-1">
+                <div className="flex-1 min-w-0">
                   <span className="font-bold">{member.team_name}</span>
                   {member.user_id === user?.id && (
                     <span className="text-xs text-gray-500 ml-2">(You)</span>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-shrink-0">
                   {member.user_id === league.commissioner_user_id && (
                     <span className="text-xs bg-green-900 text-green-400 px-2 py-0.5 rounded-full">Commissioner</span>
                   )}
@@ -136,8 +154,8 @@ export default function LeaguePage() {
               </div>
             ))}
             {spotsLeft > 0 && (
-              <div className="flex items-center gap-3 py-2 opacity-40">
-                <div className="w-8 h-8 rounded-full border border-dashed border-gray-600 flex items-center justify-center text-gray-600 text-sm">+</div>
+              <div className="flex items-center gap-3 py-2.5 opacity-40">
+                <div className="w-8 h-8 rounded-full border border-dashed border-gray-600 flex items-center justify-center text-gray-600 text-sm flex-shrink-0">+</div>
                 <span className="text-gray-600 text-sm">{spotsLeft} spot{spotsLeft > 1 ? "s" : ""} remaining</span>
               </div>
             )}
@@ -146,8 +164,10 @@ export default function LeaguePage() {
 
         {/* Commissioner Panel */}
         {isCommissioner && (
-          <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 border-dashed">
-            <h2 className="font-bold mb-4 text-gray-300 uppercase text-xs tracking-wider">⚙ Commissioner Tools</h2>
+          <div className="bg-gray-900 rounded-xl p-6 border border-dashed border-gray-700">
+            <h2 className="font-bold mb-4 text-gray-400 uppercase text-xs tracking-wider">
+              ⚙ Commissioner Tools
+            </h2>
 
             {/* Invite */}
             <div className="mb-6">
@@ -156,18 +176,18 @@ export default function LeaguePage() {
                 <input
                   readOnly
                   value={inviteLink}
-                  className="flex-1 bg-gray-800 text-white p-2.5 rounded-lg text-sm border border-gray-700"
+                  className="flex-1 bg-gray-800 text-white p-2.5 rounded-lg text-sm border border-gray-700 focus:outline-none"
                 />
                 <button
                   onClick={copyInvite}
-                  className={`font-bold py-2.5 px-5 rounded-lg text-sm transition-colors ${
+                  className={`font-bold py-2.5 px-5 rounded-lg text-sm transition-colors flex-shrink-0 ${
                     copied ? "bg-blue-600 text-white" : "bg-green-600 hover:bg-green-500 text-white"
                   }`}
                 >
-                  {copied ? "Copied!" : "Copy"}
+                  {copied ? "✓ Copied!" : "Copy"}
                 </button>
               </div>
-              <p className="text-gray-600 text-xs mt-1">
+              <p className="text-gray-600 text-xs mt-1.5">
                 Invite code: <span className="font-mono text-gray-400">{league.invite_code}</span>
               </p>
             </div>
@@ -176,13 +196,13 @@ export default function LeaguePage() {
             <div className="flex gap-3 flex-wrap">
               <button
                 onClick={() => router.push(`/manual-draft/${leagueId}`)}
-                className="bg-blue-700 hover:bg-blue-600 text-white font-bold py-2 px-5 rounded-lg text-sm"
+                className="bg-blue-700 hover:bg-blue-600 text-white font-bold py-2 px-5 rounded-lg text-sm transition-colors"
               >
-                Manual Draft
+                Manual Draft Upload
               </button>
               <button
                 onClick={() => router.push(`/league-settings/${leagueId}`)}
-                className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-5 rounded-lg text-sm"
+                className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-5 rounded-lg text-sm transition-colors"
               >
                 Scoring Settings
               </button>
