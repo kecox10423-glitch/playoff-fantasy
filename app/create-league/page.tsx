@@ -18,9 +18,21 @@ export default function CreateLeague() {
   const [numTeams, setNumTeams] = useState(6);
   const [scoringFormat, setScoringFormat] = useState("PPR");
   const [draftType, setDraftType] = useState("LIVE");
+  const [conferenceEnabled, setConferenceEnabled] = useState(false);
+  const [conferenceAName, setConferenceAName] = useState("AFC");
+  const [conferenceBName, setConferenceBName] = useState("NFC");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+
+  function handleNumTeamsChange(val: number) {
+    setNumTeams(val);
+    if (val >= 8) {
+      setConferenceEnabled(true);
+    } else {
+      setConferenceEnabled(false);
+    }
+  }
 
   async function handleCreate() {
     if (!teamName.trim()) {
@@ -47,6 +59,9 @@ export default function CreateLeague() {
         roster_config: rosterConfig,
         scoring_format: scoringFormat,
         draft_type: draftType,
+        conference_enabled: conferenceEnabled,
+        conference_a_name: conferenceAName.trim() || "AFC",
+        conference_b_name: conferenceBName.trim() || "NFC",
       })
       .select()
       .single();
@@ -78,6 +93,7 @@ export default function CreateLeague() {
         </button>
         <h1 className="text-3xl font-bold mb-8">Create League</h1>
         <div className="flex flex-col gap-6">
+
           <div>
             <label className="block text-gray-400 mb-2">League Name</label>
             <input
@@ -88,6 +104,7 @@ export default function CreateLeague() {
               className="w-full bg-gray-800 text-white p-3 rounded-lg"
             />
           </div>
+
           <div>
             <label className="block text-gray-400 mb-2">Your Team Name</label>
             <input
@@ -98,11 +115,12 @@ export default function CreateLeague() {
               className="w-full bg-gray-800 text-white p-3 rounded-lg"
             />
           </div>
+
           <div>
             <label className="block text-gray-400 mb-2">Number of Teams</label>
             <select
               value={numTeams}
-              onChange={(e) => setNumTeams(Number(e.target.value))}
+              onChange={(e) => handleNumTeamsChange(Number(e.target.value))}
               className="w-full bg-gray-800 text-white p-3 rounded-lg"
             >
               <option value={6}>6 Teams</option>
@@ -111,6 +129,7 @@ export default function CreateLeague() {
               <option value={12}>12 Teams</option>
             </select>
           </div>
+
           <div>
             <label className="block text-gray-400 mb-2">Scoring Format</label>
             <select
@@ -123,6 +142,7 @@ export default function CreateLeague() {
               <option value="STANDARD">Standard (no reception points)</option>
             </select>
           </div>
+
           <div>
             <label className="block text-gray-400 mb-2">Draft Type</label>
             <select
@@ -134,7 +154,58 @@ export default function CreateLeague() {
               <option value="MANUAL">Manual Upload</option>
             </select>
           </div>
+
+          {/* Conference Format — auto-enabled for 8+ teams */}
+          <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+            <div className="flex items-center justify-between mb-1">
+              <div>
+                <p className="font-bold text-white">Conference Format</p>
+                <p className="text-gray-500 text-xs mt-0.5">
+                  {numTeams >= 8
+                    ? "Recommended for larger leagues — splits teams into two conferences."
+                    : "Available for leagues with 8+ teams."}
+                </p>
+              </div>
+              <button
+                onClick={() => numTeams >= 8 && setConferenceEnabled(!conferenceEnabled)}
+                className={`relative w-12 h-6 rounded-full transition-colors ${
+                  conferenceEnabled ? "bg-green-600" : "bg-gray-700"
+                } ${numTeams < 8 ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}`}
+              >
+                <span className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${
+                  conferenceEnabled ? "left-7" : "left-1"
+                }`} />
+              </button>
+            </div>
+
+            {conferenceEnabled && (
+              <div className="mt-4 flex gap-3">
+                <div className="flex-1">
+                  <label className="block text-gray-400 text-xs mb-1">Conference A Name</label>
+                  <input
+                    type="text"
+                    value={conferenceAName}
+                    onChange={(e) => setConferenceAName(e.target.value)}
+                    maxLength={20}
+                    className="w-full bg-gray-800 text-white p-2.5 rounded-lg text-sm border border-gray-700 focus:outline-none focus:border-green-500"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-gray-400 text-xs mb-1">Conference B Name</label>
+                  <input
+                    type="text"
+                    value={conferenceBName}
+                    onChange={(e) => setConferenceBName(e.target.value)}
+                    maxLength={20}
+                    className="w-full bg-gray-800 text-white p-2.5 rounded-lg text-sm border border-gray-700 focus:outline-none focus:border-green-500"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
           {error && <p className="text-red-400">{error}</p>}
+
           <button
             onClick={handleCreate}
             disabled={loading || !name || !teamName}

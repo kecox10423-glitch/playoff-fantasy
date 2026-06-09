@@ -9,6 +9,93 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+function StandingsTable({
+  rows,
+  user,
+  members,
+  scores,
+  standings,
+}: {
+  rows: any[];
+  user: any;
+  members: any[];
+  scores: any[];
+  standings: any[];
+}) {
+  function getMemberName(userId: string) {
+    return members.find((m) => m.user_id === userId)?.team_name || "Unknown";
+  }
+
+  function getWeekScore(userId: string, week: number) {
+    const score = scores.find((s) => s.user_id === userId && s.week === week);
+    return score ? score.total_points.toFixed(1) : "—";
+  }
+
+  if (rows.length === 0) return (
+    <div className="bg-gray-900 rounded-xl p-8 text-center border border-gray-800">
+      <p className="text-gray-500 text-sm">No teams assigned yet.</p>
+    </div>
+  );
+
+  return (
+    <div className="bg-gray-900 rounded-xl overflow-hidden border border-gray-800">
+      <div className="overflow-x-auto">
+        <table className="w-full">
+          <thead>
+            <tr className="bg-gray-800 text-gray-400 text-xs uppercase tracking-wider">
+              <th className="text-left px-4 py-3">Rank</th>
+              <th className="text-left px-4 py-3">Team</th>
+              <th className="text-right px-3 py-3">WC</th>
+              <th className="text-right px-3 py-3">Div</th>
+              <th className="text-right px-3 py-3">CC</th>
+              <th className="text-right px-3 py-3">SB</th>
+              <th className="text-right px-4 py-3 text-white">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((standing, i) => {
+              const isMe = standing.user_id === user?.id;
+              return (
+                <tr
+                  key={standing.id}
+                  className={`border-t border-gray-800 ${isMe ? "bg-green-950" : "hover:bg-gray-800"}`}
+                >
+                  <td className="px-4 py-4">
+                    <span className={`font-black text-lg ${
+                      i === 0 ? "text-yellow-400" :
+                      i === 1 ? "text-gray-300" :
+                      i === 2 ? "text-orange-400" :
+                      "text-gray-600"
+                    }`}>
+                      {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i + 1}`}
+                    </span>
+                  </td>
+                  <td className="px-4 py-4">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-full bg-gray-700 flex items-center justify-center text-xs font-black flex-shrink-0">
+                        {getMemberName(standing.user_id).charAt(0)}
+                      </div>
+                      <span className={`font-bold ${isMe ? "text-green-400" : "text-white"}`}>
+                        {getMemberName(standing.user_id)}
+                      </span>
+                      {isMe && <span className="text-xs text-gray-500">(You)</span>}
+                    </div>
+                  </td>
+                  <td className="px-3 py-4 text-right text-gray-300 text-sm">{getWeekScore(standing.user_id, 1)}</td>
+                  <td className="px-3 py-4 text-right text-gray-300 text-sm">{getWeekScore(standing.user_id, 2)}</td>
+                  <td className="px-3 py-4 text-right text-gray-300 text-sm">{getWeekScore(standing.user_id, 3)}</td>
+                  <td className="px-3 py-4 text-right text-gray-300 text-sm">{getWeekScore(standing.user_id, 4)}</td>
+                  <td className="px-4 py-4 text-right font-black text-green-400 text-lg">{standing.total_points.toFixed(1)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 export default function StandingsPage() {
   const [league, setLeague] = useState<any>(null);
   const [members, setMembers] = useState<any[]>([]);
@@ -48,22 +135,26 @@ export default function StandingsPage() {
     load();
   }, []);
 
-  function getMemberName(userId: string) {
-    return members.find(m => m.user_id === userId)?.team_name || "Unknown";
-  }
-
-  function getWeekScore(userId: string, week: number) {
-    const score = scores.find(s => s.user_id === userId && s.week === week);
-    return score ? score.total_points.toFixed(1) : "—";
+  function getMemberConference(userId: string) {
+    return members.find((m) => m.user_id === userId)?.conference || null;
   }
 
   const isCommissioner = user?.id === league?.commissioner_user_id;
+  const conferenceEnabled = league?.conference_enabled;
+  const confAName = league?.conference_a_name || "AFC";
+  const confBName = league?.conference_b_name || "NFC";
+
+  const confAStandings = standings.filter((s) => getMemberConference(s.user_id) === "A");
+  const confBStandings = standings.filter((s) => getMemberConference(s.user_id) === "B");
+  const unassigned = standings.filter((s) => !getMemberConference(s.user_id));
 
   if (loading) return (
     <main className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
       <p>Loading...</p>
     </main>
   );
+
+  const tableProps = { user, members, scores, standings };
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
@@ -84,60 +175,41 @@ export default function StandingsPage() {
             <p className="text-gray-300 text-lg font-bold mb-2">No scores yet</p>
             <p className="text-gray-500 text-sm">Standings update automatically after each playoff week.</p>
           </div>
-        ) : (
-          <div className="bg-gray-900 rounded-xl overflow-hidden border border-gray-800">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-gray-800 text-gray-400 text-xs uppercase tracking-wider">
-                  <th className="text-left px-4 py-3">Rank</th>
-                  <th className="text-left px-4 py-3">Team</th>
-                  <th className="text-right px-4 py-3">Wild Card</th>
-                  <th className="text-right px-4 py-3">Divisional</th>
-                  <th className="text-right px-4 py-3">Conf. Champ</th>
-                  <th className="text-right px-4 py-3">Super Bowl</th>
-                  <th className="text-right px-4 py-3 text-white">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {standings.map((standing, i) => {
-                  const isMe = standing.user_id === user?.id;
-                  return (
-                    <tr
-                      key={standing.id}
-                      className={`border-t border-gray-800 ${isMe ? "bg-green-950" : "hover:bg-gray-800"}`}
-                    >
-                      <td className="px-4 py-4">
-                        <span className={`font-black text-lg ${
-                          i === 0 ? "text-yellow-400" :
-                          i === 1 ? "text-gray-300" :
-                          i === 2 ? "text-orange-400" :
-                          "text-gray-600"
-                        }`}>
-                          {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i + 1}`}
-                        </span>
-                      </td>
-                      <td className="px-4 py-4">
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-full bg-gray-700 flex items-center justify-center text-xs font-black">
-                            {getMemberName(standing.user_id).charAt(0)}
-                          </div>
-                          <span className={`font-bold ${isMe ? "text-green-400" : "text-white"}`}>
-                            {getMemberName(standing.user_id)}
-                          </span>
-                          {isMe && <span className="text-xs text-gray-500">(You)</span>}
-                        </div>
-                      </td>
-                      <td className="px-4 py-4 text-right text-gray-300 text-sm">{getWeekScore(standing.user_id, 1)}</td>
-                      <td className="px-4 py-4 text-right text-gray-300 text-sm">{getWeekScore(standing.user_id, 2)}</td>
-                      <td className="px-4 py-4 text-right text-gray-300 text-sm">{getWeekScore(standing.user_id, 3)}</td>
-                      <td className="px-4 py-4 text-right text-gray-300 text-sm">{getWeekScore(standing.user_id, 4)}</td>
-                      <td className="px-4 py-4 text-right font-black text-green-400 text-lg">{standing.total_points.toFixed(1)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+        ) : conferenceEnabled ? (
+          <div className="flex flex-col gap-10">
+            <div>
+              <div className="flex items-center gap-3 mb-4">
+                <h2 className="text-xl font-black text-white">{confAName}</h2>
+                <span className="text-xs bg-blue-900 text-blue-300 px-2 py-1 rounded-full font-bold">Conference</span>
+              </div>
+              <StandingsTable rows={confAStandings} {...tableProps} />
+            </div>
+
+            <div>
+              <div className="flex items-center gap-3 mb-4">
+                <h2 className="text-xl font-black text-white">{confBName}</h2>
+                <span className="text-xs bg-purple-900 text-purple-300 px-2 py-1 rounded-full font-bold">Conference</span>
+              </div>
+              <StandingsTable rows={confBStandings} {...tableProps} />
+            </div>
+
+            {unassigned.length > 0 && (
+              <div>
+                <h2 className="text-lg font-black text-gray-500 mb-4">Unassigned</h2>
+                <StandingsTable rows={unassigned} {...tableProps} />
+              </div>
+            )}
+
+            <div>
+              <div className="flex items-center gap-3 mb-4">
+                <h2 className="text-xl font-black text-white">Overall</h2>
+                <span className="text-xs bg-green-900 text-green-400 px-2 py-1 rounded-full font-bold">All Teams</span>
+              </div>
+              <StandingsTable rows={standings} {...tableProps} />
+            </div>
           </div>
+        ) : (
+          <StandingsTable rows={standings} {...tableProps} />
         )}
       </div>
     </main>
