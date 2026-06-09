@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { useRouter, useParams } from "next/navigation";
 import Nav from "../../components/Nav";
@@ -8,6 +8,52 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
+
+const AVATAR_COLORS = [
+  { name: "green", bg: "bg-green-700", hex: "#15803d" },
+  { name: "blue", bg: "bg-blue-700", hex: "#1d4ed8" },
+  { name: "purple", bg: "bg-purple-700", hex: "#7e22ce" },
+  { name: "red", bg: "bg-red-700", hex: "#b91c1c" },
+  { name: "orange", bg: "bg-orange-600", hex: "#ea580c" },
+  { name: "yellow", bg: "bg-yellow-600", hex: "#ca8a04" },
+  { name: "pink", bg: "bg-pink-600", hex: "#db2777" },
+  { name: "teal", bg: "bg-teal-600", hex: "#0d9488" },
+  { name: "indigo", bg: "bg-indigo-700", hex: "#4338ca" },
+  { name: "rose", bg: "bg-rose-700", hex: "#be123c" },
+  { name: "cyan", bg: "bg-cyan-600", hex: "#0891b2" },
+  { name: "lime", bg: "bg-lime-600", hex: "#65a30d" },
+];
+
+function Avatar({ member, size = "md" }: { member: any; size?: "sm" | "md" | "lg" }) {
+  const sizeClass = size === "sm" ? "w-8 h-8 text-xs" : size === "lg" ? "w-14 h-14 text-xl" : "w-10 h-10 text-sm";
+  const initials = member.team_name
+    .split(" ")
+    .map((w: string) => w[0])
+    .join("")
+    .substring(0, 2)
+    .toUpperCase();
+
+  if (member.avatar_url) {
+    return (
+      <img
+        src={member.avatar_url}
+        alt={member.team_name}
+        className={`${sizeClass} rounded-full object-cover flex-shrink-0`}
+      />
+    );
+  }
+
+  const color = AVATAR_COLORS.find(c => c.name === member.avatar_color) || AVATAR_COLORS[0];
+
+  return (
+    <div
+      className={`${sizeClass} rounded-full flex items-center justify-center font-black flex-shrink-0`}
+      style={{ backgroundColor: color.hex }}
+    >
+      {initials}
+    </div>
+  );
+}
 
 export default function LeaguePage() {
   const [league, setLeague] = useState<any>(null);
@@ -19,6 +65,12 @@ export default function LeaguePage() {
   const [manualConferences, setManualConferences] = useState<{ [userId: string]: string }>({});
   const [savingConferences, setSavingConferences] = useState(false);
   const [conferencesSaved, setConferencesSaved] = useState(false);
+  const [showAvatarModal, setShowAvatarModal] = useState(false);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [selectedColor, setSelectedColor] = useState("green");
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const params = useParams();
   const leagueId = params.id as string;
@@ -38,12 +90,15 @@ export default function LeaguePage() {
       setLeague(leagueData);
       setMembers(membersData || []);
 
-      // Pre-fill manual conference assignments from existing data
       const existing: { [userId: string]: string } = {};
       (membersData || []).forEach((m: any) => {
         if (m.conference) existing[m.user_id] = m.conference;
       });
       setManualConferences(existing);
+
+      // Pre-fill current user's color
+      const myMember = (membersData || []).find((m: any) => m.user_id === user.id);
+      if (myMember?.avatar_color) setSelectedColor(myMember.avatar_color);
 
       setLoading(false);
     }
@@ -63,6 +118,74 @@ export default function LeaguePage() {
       'draftroom',
       'width=1400,height=900,scrollbars=no,resizable=yes'
     );
+  }
+
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAvatarFile(file);
+    const reader = new FileReader();
+    reader.onload = (ev) => setAvatarPreview(ev.target?.result as string);
+    reader.readAsDataURL(file);
+  }
+
+  async function handleSaveAvatar() {
+    if (!user) return;
+    setUploadingAvatar(true);
+
+    let avatarUrl: string | null = null;
+
+    if (avatarFile) {
+      const ext = avatarFile.name.split(".").pop();
+      const path = `${user.id}/${leagueId}.${ext}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("avatars")
+        .upload(path, avatarFile, { upsert: true });
+
+      if (!uploadError) {
+        const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+        avatarUrl = data.publicUrl;
+      }
+    }
+
+    await supabase
+      .from("league_members")
+      .update({
+        avatar_color: selectedColor,
+        ...(avatarUrl ? { avatar_url: avatarUrl } : {}),
+      })
+      .eq("league_id", leagueId)
+      .eq("user_id", user.id);
+
+    setMembers(prev => prev.map(m =>
+      m.user_id === user.id
+        ? { ...m, avatar_color: selectedColor, ...(avatarUrl ? { avatar_url: avatarUrl } : {}) }
+        : m
+    ));
+
+    setUploadingAvatar(false);
+    setShowAvatarModal(false);
+    setAvatarFile(null);
+    setAvatarPreview(null);
+  }
+
+  async function handleRemoveAvatar() {
+    if (!user) return;
+    setUploadingAvatar(true);
+
+    await supabase
+      .from("league_members")
+      .update({ avatar_url: null })
+      .eq("league_id", leagueId)
+      .eq("user_id", user.id);
+
+    setMembers(prev => prev.map(m =>
+      m.user_id === user.id ? { ...m, avatar_url: null } : m
+    ));
+
+    setUploadingAvatar(false);
+    setShowAvatarModal(false);
   }
 
   async function randomlyAssignConferences() {
@@ -127,6 +250,7 @@ export default function LeaguePage() {
   const conferenceEnabled = league.conference_enabled;
   const confAName = league.conference_a_name || "AFC";
   const confBName = league.conference_b_name || "NFC";
+  const myMember = members.find(m => m.user_id === user?.id);
 
   function getConferenceBadge(member: any) {
     if (!conferenceEnabled || !member.conference) return null;
@@ -148,6 +272,80 @@ export default function LeaguePage() {
         isCommissioner={isCommissioner}
         activePage="league"
       />
+
+      {/* Avatar Modal */}
+      {showAvatarModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 px-4">
+          <div className="bg-gray-900 rounded-xl p-6 w-full max-w-sm border border-gray-700">
+            <h2 className="font-black text-lg mb-4">Edit Your Avatar</h2>
+
+            {/* Preview */}
+            <div className="flex justify-center mb-5">
+              {avatarPreview ? (
+                <img src={avatarPreview} className="w-20 h-20 rounded-full object-cover" />
+              ) : (
+                <Avatar member={{ ...myMember, avatar_color: selectedColor, avatar_url: null }} size="lg" />
+              )}
+            </div>
+
+            {/* Upload */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full bg-gray-800 hover:bg-gray-700 text-white font-bold py-2.5 rounded-lg text-sm mb-4"
+            >
+              📁 Upload Image
+            </button>
+
+            {/* Color picker */}
+            <p className="text-gray-400 text-xs mb-2">Default color (if no image):</p>
+            <div className="flex flex-wrap gap-2 mb-5">
+              {AVATAR_COLORS.map(color => (
+                <button
+                  key={color.name}
+                  onClick={() => { setSelectedColor(color.name); setAvatarPreview(null); setAvatarFile(null); }}
+                  className={`w-8 h-8 rounded-full border-2 transition-all ${
+                    selectedColor === color.name ? "border-white scale-110" : "border-transparent"
+                  }`}
+                  style={{ backgroundColor: color.hex }}
+                />
+              ))}
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-2">
+              <button
+                onClick={handleSaveAvatar}
+                disabled={uploadingAvatar}
+                className="flex-1 bg-green-600 hover:bg-green-500 disabled:bg-gray-700 text-white font-bold py-2.5 rounded-lg text-sm"
+              >
+                {uploadingAvatar ? "Saving..." : "Save"}
+              </button>
+              {myMember?.avatar_url && (
+                <button
+                  onClick={handleRemoveAvatar}
+                  disabled={uploadingAvatar}
+                  className="bg-red-900 hover:bg-red-800 text-red-300 font-bold py-2.5 px-4 rounded-lg text-sm"
+                >
+                  Remove
+                </button>
+              )}
+              <button
+                onClick={() => { setShowAvatarModal(false); setAvatarPreview(null); setAvatarFile(null); }}
+                className="bg-gray-800 hover:bg-gray-700 text-white font-bold py-2.5 px-4 rounded-lg text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="max-w-3xl mx-auto px-4 py-8">
 
@@ -212,8 +410,17 @@ export default function LeaguePage() {
           <div className="flex flex-col gap-1">
             {members.map((member, i) => (
               <div key={member.id} className="flex items-center gap-3 py-2.5 border-b border-gray-800 last:border-0">
-                <div className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center text-sm font-black flex-shrink-0">
-                  {member.team_name.charAt(0).toUpperCase()}
+                <div className="relative flex-shrink-0">
+                  <Avatar member={member} size="md" />
+                  {member.user_id === user?.id && (
+                    <button
+                      onClick={() => setShowAvatarModal(true)}
+                      className="absolute -bottom-1 -right-1 w-5 h-5 bg-gray-600 hover:bg-gray-500 rounded-full flex items-center justify-center text-xs"
+                      title="Edit avatar"
+                    >
+                      ✏
+                    </button>
+                  )}
                 </div>
                 <div className="flex-1 min-w-0">
                   <span className="font-bold">{member.team_name}</span>
