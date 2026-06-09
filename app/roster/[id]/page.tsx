@@ -9,6 +9,52 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+const AVATAR_COLORS = [
+  { name: "green", hex: "#15803d" },
+  { name: "blue", hex: "#1d4ed8" },
+  { name: "purple", hex: "#7e22ce" },
+  { name: "red", hex: "#b91c1c" },
+  { name: "orange", hex: "#ea580c" },
+  { name: "yellow", hex: "#ca8a04" },
+  { name: "pink", hex: "#db2777" },
+  { name: "teal", hex: "#0d9488" },
+  { name: "indigo", hex: "#4338ca" },
+  { name: "rose", hex: "#be123c" },
+  { name: "cyan", hex: "#0891b2" },
+  { name: "lime", hex: "#65a30d" },
+];
+
+function Avatar({ member, size = "md" }: { member: any; size?: "sm" | "md" | "lg" }) {
+  const sizeClass = size === "sm" ? "w-8 h-8 text-xs" : size === "lg" ? "w-14 h-14 text-xl" : "w-10 h-10 text-sm";
+  const initials = member.team_name
+    .split(" ")
+    .map((w: string) => w[0])
+    .join("")
+    .substring(0, 2)
+    .toUpperCase();
+
+  if (member.avatar_url) {
+    return (
+      <img
+        src={member.avatar_url}
+        alt={member.team_name}
+        className={`${sizeClass} rounded-full object-cover flex-shrink-0`}
+      />
+    );
+  }
+
+  const color = AVATAR_COLORS.find(c => c.name === member.avatar_color) || AVATAR_COLORS[0];
+
+  return (
+    <div
+      className={`${sizeClass} rounded-full flex items-center justify-center font-black flex-shrink-0`}
+      style={{ backgroundColor: color.hex }}
+    >
+      {initials}
+    </div>
+  );
+}
+
 const POSITION_GROUPS = [
   {
     label: "QUARTERBACKS",
@@ -227,17 +273,20 @@ export default function RosterPage() {
         <div className="flex flex-wrap gap-4 items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             <label className="text-gray-400 text-sm whitespace-nowrap">Team:</label>
-            <select
-              value={selectedUserId || ""}
-              onChange={(e) => setSelectedUserId(e.target.value)}
-              className="bg-gray-800 text-white px-4 py-2 rounded-lg text-sm font-bold border border-gray-700 focus:outline-none focus:border-green-500"
-            >
-              {members.map(member => (
-                <option key={member.id} value={member.user_id}>
-                  {member.team_name}{member.user_id === user?.id ? " (You)" : ""}
-                </option>
-              ))}
-            </select>
+            <div className="flex items-center gap-2 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2">
+              {selectedMember && <Avatar member={selectedMember} size="sm" />}
+              <select
+                value={selectedUserId || ""}
+                onChange={(e) => setSelectedUserId(e.target.value)}
+                className="bg-transparent text-white text-sm font-bold focus:outline-none"
+              >
+                {members.map(member => (
+                  <option key={member.id} value={member.user_id}>
+                    {member.team_name}{member.user_id === user?.id ? " (You)" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div className="flex gap-6 text-sm">
@@ -378,9 +427,12 @@ export default function RosterPage() {
 
             {activeTab === "playoff" && roster.length > 0 && (
               <div className="bg-gray-800 rounded-lg p-4 flex justify-between items-center mt-4 sticky bottom-4">
-                <div>
-                  <p className="font-black text-lg">{selectedMember?.team_name}</p>
-                  <p className="text-gray-400 text-sm">{WEEK_LABELS[selectedWeek]} · {activeCount} active players</p>
+                <div className="flex items-center gap-3">
+                  {selectedMember && <Avatar member={selectedMember} size="md" />}
+                  <div>
+                    <p className="font-black text-lg">{selectedMember?.team_name}</p>
+                    <p className="text-gray-400 text-sm">{WEEK_LABELS[selectedWeek]} · {activeCount} active players</p>
+                  </div>
                 </div>
                 <div className="text-right">
                   <p className="text-3xl font-black text-green-400">{teamTotal.toFixed(1)}</p>
