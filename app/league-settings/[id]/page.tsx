@@ -159,10 +159,15 @@ const PRESETS: { [key: string]: Partial<typeof DEFAULT_SETTINGS> } = {
 export default function LeagueSettingsPage() {
   const [league, setLeague] = useState<any>(null);
   const [settings, setSettings] = useState<any>({ ...DEFAULT_SETTINGS });
+  const [conferenceAName, setConferenceAName] = useState("AFC");
+  const [conferenceBName, setConferenceBName] = useState("NFC");
+  const [conferenceEnabled, setConferenceEnabled] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [savingConference, setSavingConference] = useState(false);
+  const [savedConference, setSavedConference] = useState(false);
   const [isCommissioner, setIsCommissioner] = useState(false);
   const router = useRouter();
   const params = useParams();
@@ -179,6 +184,9 @@ export default function LeagueSettingsPage() {
 
       setLeague(leagueData);
       setIsCommissioner(leagueData?.commissioner_user_id === user.id);
+      setConferenceEnabled(leagueData?.conference_enabled || false);
+      setConferenceAName(leagueData?.conference_a_name || "AFC");
+      setConferenceBName(leagueData?.conference_b_name || "NFC");
 
       if (leagueData?.scoring_settings) {
         setSettings({ ...DEFAULT_SETTINGS, ...leagueData.scoring_settings });
@@ -211,6 +219,24 @@ export default function LeagueSettingsPage() {
     setTimeout(() => setSaved(false), 3000);
   }
 
+  async function handleSaveConference() {
+    setSavingConference(true);
+    setSavedConference(false);
+
+    await supabase
+      .from("leagues")
+      .update({
+        conference_enabled: conferenceEnabled,
+        conference_a_name: conferenceAName.trim() || "AFC",
+        conference_b_name: conferenceBName.trim() || "NFC",
+      })
+      .eq("id", leagueId);
+
+    setSavingConference(false);
+    setSavedConference(true);
+    setTimeout(() => setSavedConference(false), 3000);
+  }
+
   if (loading) return (
     <main className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
       <p>Loading settings...</p>
@@ -236,7 +262,7 @@ export default function LeagueSettingsPage() {
             >
               ← Back to League
             </button>
-            <h1 className="text-xl font-bold">{league?.name} — Scoring Settings</h1>
+            <h1 className="text-xl font-bold">{league?.name} — Settings</h1>
           </div>
           <button
             onClick={handleSave}
@@ -247,14 +273,73 @@ export default function LeagueSettingsPage() {
                 : "bg-green-600 hover:bg-green-500 text-white"
             }`}
           >
-            {saving ? "Saving..." : saved ? "✓ Saved!" : "Save Settings"}
+            {saving ? "Saving..." : saved ? "✓ Saved!" : "Save Scoring"}
           </button>
         </div>
       </div>
 
       <div className="max-w-4xl mx-auto px-4 py-6">
 
-        {/* Presets */}
+        {/* Conference Settings */}
+        <div className="bg-gray-900 rounded-xl p-6 mb-8 border border-gray-800">
+          <h2 className="font-black text-lg mb-1 text-green-400">Conference Format</h2>
+          <p className="text-gray-500 text-sm mb-5">
+            Available for leagues with 8+ teams. Splits teams into two conferences with a championship matchup.
+          </p>
+
+          <div className="flex items-center justify-between mb-5">
+            <p className="font-bold text-white">Enable Conferences</p>
+            <button
+              onClick={() => league?.num_teams >= 8 && setConferenceEnabled(!conferenceEnabled)}
+              className={`relative w-12 h-6 rounded-full transition-colors ${
+                conferenceEnabled ? "bg-green-600" : "bg-gray-700"
+              } ${league?.num_teams < 8 ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}`}
+            >
+              <span className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${
+                conferenceEnabled ? "left-7" : "left-1"
+              }`} />
+            </button>
+          </div>
+
+          {conferenceEnabled && (
+            <div className="flex gap-3 mb-5">
+              <div className="flex-1">
+                <label className="block text-gray-400 text-xs mb-1">Conference A Name</label>
+                <input
+                  type="text"
+                  value={conferenceAName}
+                  onChange={(e) => setConferenceAName(e.target.value)}
+                  maxLength={20}
+                  className="w-full bg-gray-800 text-white p-2.5 rounded-lg text-sm border border-gray-700 focus:outline-none focus:border-green-500"
+                />
+              </div>
+              <div className="flex-1">
+                <label className="block text-gray-400 text-xs mb-1">Conference B Name</label>
+                <input
+                  type="text"
+                  value={conferenceBName}
+                  onChange={(e) => setConferenceBName(e.target.value)}
+                  maxLength={20}
+                  className="w-full bg-gray-800 text-white p-2.5 rounded-lg text-sm border border-gray-700 focus:outline-none focus:border-green-500"
+                />
+              </div>
+            </div>
+          )}
+
+          <button
+            onClick={handleSaveConference}
+            disabled={savingConference}
+            className={`font-bold py-2 px-6 rounded-lg text-sm transition-colors ${
+              savedConference
+                ? "bg-blue-600 text-white"
+                : "bg-green-600 hover:bg-green-500 text-white"
+            }`}
+          >
+            {savingConference ? "Saving..." : savedConference ? "✓ Saved!" : "Save Conference Settings"}
+          </button>
+        </div>
+
+        {/* Scoring Presets */}
         <div className="bg-gray-900 rounded-lg p-6 mb-8">
           <h2 className="font-bold mb-1">Quick Presets</h2>
           <p className="text-gray-400 text-sm mb-4">Apply a preset then customize further.</p>
@@ -307,7 +392,7 @@ export default function LeagueSettingsPage() {
               : "bg-green-600 hover:bg-green-500 text-white"
           }`}
         >
-          {saving ? "Saving..." : saved ? "✓ Saved!" : "Save Settings"}
+          {saving ? "Saving..." : saved ? "✓ Saved!" : "Save Scoring Settings"}
         </button>
       </div>
     </main>
