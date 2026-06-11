@@ -8,7 +8,7 @@ const supabaseAdmin = createClient(
 
 export async function POST(req: NextRequest) {
   try {
-    const { leagueId, userId, subject, message } = await req.json();
+    const { leagueId, userId, subject, message, recipientIds } = await req.json();
 
     if (!leagueId || !userId || !subject || !message) {
       return NextResponse.json({ error: "Missing fields" }, { status: 400 });
@@ -39,9 +39,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Failed to load members" }, { status: 500 });
     }
 
-    // Get email addresses for all members via auth admin API
+    // Filter to selected recipients if provided
+    const targetMembers = Array.isArray(recipientIds) && recipientIds.length > 0
+      ? members.filter(m => recipientIds.includes(m.user_id))
+      : members;
+
+    if (targetMembers.length === 0) {
+      return NextResponse.json({ error: "No recipients selected" }, { status: 400 });
+    }
+
+    // Get email addresses for selected members via auth admin API
     const emails: string[] = [];
-    for (const member of members) {
+    for (const member of targetMembers) {
       const { data: userData } = await supabaseAdmin.auth.admin.getUserById(member.user_id);
       if (userData?.user?.email) {
         emails.push(userData.user.email);

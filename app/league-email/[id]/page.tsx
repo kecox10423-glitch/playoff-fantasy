@@ -19,6 +19,7 @@ export default function LeagueEmailPage() {
   const [sending, setSending] = useState(false);
   const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
   const [resultMessage, setResultMessage] = useState("");
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const router = useRouter();
   const params = useParams();
   const leagueId = params.id as string;
@@ -37,13 +38,30 @@ export default function LeagueEmailPage() {
 
       setLeague(leagueData);
       setMembers(membersData || []);
+      setSelectedUserIds((membersData || []).map((m: any) => m.user_id));
       setLoading(false);
     }
     load();
   }, []);
 
+  function toggleRecipient(userId: string) {
+    setSelectedUserIds(prev =>
+      prev.includes(userId)
+        ? prev.filter(id => id !== userId)
+        : [...prev, userId]
+    );
+  }
+
+  function selectAll() {
+    setSelectedUserIds(members.map(m => m.user_id));
+  }
+
+  function selectNone() {
+    setSelectedUserIds([]);
+  }
+
   async function handleSend() {
-    if (!subject.trim() || !message.trim()) return;
+    if (!subject.trim() || !message.trim() || selectedUserIds.length === 0) return;
     setSending(true);
     setStatus("idle");
 
@@ -56,6 +74,7 @@ export default function LeagueEmailPage() {
           userId: user.id,
           subject: subject.trim(),
           message: message.trim(),
+          recipientIds: selectedUserIds,
         }),
       });
 
@@ -119,7 +138,7 @@ export default function LeagueEmailPage() {
 
         <h1 className="text-2xl font-black mb-1">Email League</h1>
         <p className="text-gray-400 text-sm mb-8">
-          Send a message to all {members.length} member{members.length === 1 ? "" : "s"} of {league.name}.
+          Send a message to members of {league.name}.
         </p>
 
         {status === "success" && (
@@ -138,13 +157,37 @@ export default function LeagueEmailPage() {
 
           {/* Recipients */}
           <div>
-            <p className="text-gray-400 text-xs uppercase tracking-wider mb-2">Recipients</p>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-gray-400 text-xs uppercase tracking-wider">
+                Recipients ({selectedUserIds.length}/{members.length})
+              </p>
+              <div className="flex gap-3">
+                <button onClick={selectAll} className="text-xs text-green-400 hover:text-green-300 font-bold">
+                  Select All
+                </button>
+                <button onClick={selectNone} className="text-xs text-gray-500 hover:text-gray-300 font-bold">
+                  Select None
+                </button>
+              </div>
+            </div>
             <div className="flex flex-wrap gap-2">
-              {members.map(member => (
-                <span key={member.id} className="text-xs bg-gray-800 text-gray-300 px-2.5 py-1 rounded-full">
-                  {member.team_name}
-                </span>
-              ))}
+              {members.map(member => {
+                const isSelected = selectedUserIds.includes(member.user_id);
+                return (
+                  <button
+                    key={member.id}
+                    onClick={() => toggleRecipient(member.user_id)}
+                    className={`text-xs font-bold px-3 py-1.5 rounded-full border transition-colors ${
+                      isSelected
+                        ? "bg-green-900 text-green-300 border-green-700"
+                        : "bg-gray-800 text-gray-500 border-gray-700"
+                    }`}
+                  >
+                    {isSelected ? "✓ " : ""}{member.team_name}
+                    {member.user_id === user?.id ? " (You)" : ""}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -177,10 +220,14 @@ export default function LeagueEmailPage() {
 
           <button
             onClick={handleSend}
-            disabled={sending || !subject.trim() || !message.trim()}
+            disabled={sending || !subject.trim() || !message.trim() || selectedUserIds.length === 0}
             className="bg-green-600 hover:bg-green-500 disabled:bg-gray-700 text-white font-bold py-3 rounded-lg transition-colors"
           >
-            {sending ? "Sending..." : `Send to ${members.length} Member${members.length === 1 ? "" : "s"}`}
+            {sending
+              ? "Sending..."
+              : selectedUserIds.length === 0
+                ? "Select at least one recipient"
+                : `Send to ${selectedUserIds.length} Member${selectedUserIds.length === 1 ? "" : "s"}`}
           </button>
         </div>
       </div>
