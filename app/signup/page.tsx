@@ -8,6 +8,18 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+function PFFLLogo({ size = 64 }: { size?: number }) {
+  return (
+    <img
+      src="/apple-touch-icon.png"
+      alt="PFFL Logo"
+      width={size}
+      height={size}
+      style={{ borderRadius: "20%" }}
+    />
+  );
+}
+
 export default function SignUp() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -30,7 +42,8 @@ export default function SignUp() {
   if (success) {
     return (
       <main className="min-h-screen bg-gray-950 text-white flex flex-col items-center justify-center p-8">
-        <h2 className="text-2xl font-bold mb-4">Check your email!</h2>
+        <PFFLLogo size={64} />
+        <h2 className="text-2xl font-bold mt-4 mb-2">Check your email!</h2>
         <p className="text-gray-400">We sent you a confirmation link.</p>
       </main>
     );
@@ -38,7 +51,8 @@ export default function SignUp() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white flex flex-col items-center justify-center p-8">
-      <h1 className="text-3xl font-bold mb-8">Create Account</h1>
+      <PFFLLogo size={64} />
+      <h1 className="text-3xl font-bold mt-4 mb-8">Create Account</h1>
       <div className="w-full max-w-sm flex flex-col gap-4">
         <input
           type="email"

@@ -9,6 +9,18 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+function PFFLLogo({ size = 64 }: { size?: number }) {
+  return (
+    <img
+      src="/apple-touch-icon.png"
+      alt="PFFL Logo"
+      width={size}
+      height={size}
+      style={{ borderRadius: "20%" }}
+    />
+  );
+}
+
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -30,7 +42,8 @@ export default function Login() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white flex flex-col items-center justify-center p-8">
-      <h1 className="text-3xl font-bold mb-8">Log In</h1>
+      <PFFLLogo size={64} />
+      <h1 className="text-3xl font-bold mt-4 mb-8">Log In</h1>
       <div className="w-full max-w-sm flex flex-col gap-4">
         <input
           type="email"
