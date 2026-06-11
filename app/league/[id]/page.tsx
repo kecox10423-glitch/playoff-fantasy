@@ -541,6 +541,12 @@ export default function LeaguePage() {
               >
                 Scoring Settings
               </button>
+              <button
+                onClick={() => router.push(`/league-email/${leagueId}`)}
+                className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-5 rounded-lg text-sm transition-colors"
+              >
+                ✉ Email League
+              </button>
             </div>
           </div>
         )}
