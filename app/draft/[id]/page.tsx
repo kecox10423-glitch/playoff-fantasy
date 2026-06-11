@@ -55,6 +55,7 @@ function getPositionBadge(position: string) {
 
 type SortKey = "rank" | "name" | "seed" | "proj";
 type SortDir = "asc" | "desc";
+type MobileTab = "roster" | "players" | "board";
 
 export default function DraftPage() {
   const [league, setLeague] = useState<any>(null);
@@ -73,6 +74,7 @@ export default function DraftPage() {
   const [chatInput, setChatInput] = useState("");
   const [queue, setQueue] = useState<number[]>([]);
   const [rightPanel, setRightPanel] = useState<"board" | "chat">("board");
+  const [mobileTab, setMobileTab] = useState<MobileTab>("players");
   const timerRef = useRef<any>(null);
   const picksRef = useRef<any[]>([]);
   const membersRef = useRef<any[]>([]);
@@ -352,46 +354,46 @@ export default function DraftPage() {
       <div className="bg-gray-900 border-b border-gray-800 flex-shrink-0">
 
         {/* Row 1: Logo + Timer + Leave */}
-        <div className="px-4 py-2 flex items-center justify-between border-b border-gray-800">
-          <div className="flex items-center gap-3">
+        <div className="px-2 sm:px-4 py-2 flex items-center justify-between border-b border-gray-800 gap-2">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <PFFLLogo size={28} />
-            <div>
-              <p className="text-xs text-gray-500 leading-none">Draft Room</p>
-              <p className="text-sm font-bold leading-none mt-0.5">{league?.name}</p>
+            <div className="min-w-0">
+              <p className="text-xs text-gray-500 leading-none hidden sm:block">Draft Room</p>
+              <p className="text-xs sm:text-sm font-bold leading-none mt-0.5 truncate max-w-[80px] sm:max-w-none">{league?.name}</p>
             </div>
           </div>
 
-          <div className="text-center">
-            <div className={`text-4xl font-mono font-black ${timeLeft <= 10 ? "text-red-400 animate-pulse" : "text-green-400"}`}>
+          <div className="text-center flex-shrink-0">
+            <div className={`text-2xl sm:text-4xl font-mono font-black ${timeLeft <= 10 ? "text-red-400 animate-pulse" : "text-green-400"}`}>
               {draftComplete ? "✅" : `${String(Math.floor(timeLeft / 60)).padStart(2, "0")}:${String(timeLeft % 60).padStart(2, "0")}`}
             </div>
-            <p className="text-xs text-gray-500">
-              {draftComplete ? "Complete" : `Round ${currentRound} · Pick ${getCurrentPickNumber()} of ${totalPicks}`}
+            <p className="text-xs text-gray-500 whitespace-nowrap">
+              {draftComplete ? "Complete" : `Rd ${currentRound} · Pick ${getCurrentPickNumber()}/${totalPicks}`}
             </p>
           </div>
 
           <button
             onClick={handleLeaveDraft}
-            className="text-gray-500 hover:text-white text-sm border border-gray-700 px-3 py-1 rounded hover:border-gray-500 transition-colors"
+            className="text-gray-500 hover:text-white text-xs sm:text-sm border border-gray-700 px-2 sm:px-3 py-1 rounded hover:border-gray-500 transition-colors flex-shrink-0 whitespace-nowrap"
           >
-            Leave Draft
+            Leave
           </button>
         </div>
 
         {/* Row 2: Status + Last Pick + Auto Pick */}
-        <div className={`px-4 py-2 flex items-center justify-between ${isMyTurn() && !draftComplete ? "bg-green-900" : ""}`}>
-          <div className="flex-1">
+        <div className={`px-2 sm:px-4 py-2 flex items-center justify-between gap-2 ${isMyTurn() && !draftComplete ? "bg-green-900" : ""}`}>
+          <div className="flex-1 min-w-0">
             {draftComplete ? (
-              <p className="font-bold text-green-400">🏆 Draft Complete!</p>
+              <p className="font-bold text-green-400 text-sm">🏆 Draft Complete!</p>
             ) : isMyTurn() ? (
-              <p className="font-black text-green-300 text-lg">⚡ You are on the clock!</p>
+              <p className="font-black text-green-300 text-sm sm:text-lg">⚡ You're on the clock!</p>
             ) : (
-              <p className="text-gray-300 text-sm">
+              <p className="text-gray-300 text-xs sm:text-sm truncate">
                 On the clock: <span className="text-white font-bold">{currentPickOwner?.team_name}</span>
               </p>
             )}
           </div>
-          <div className="flex gap-8 text-xs">
+          <div className="hidden sm:flex gap-8 text-xs flex-shrink-0">
             {lastPickPlayer && (
               <div className="text-right">
                 <p className="text-gray-600 uppercase tracking-wider text-xs mb-0.5">Last Pick</p>
@@ -410,33 +412,61 @@ export default function DraftPage() {
         </div>
 
         {/* Row 3: Team Strip */}
-        <div className="px-4 py-2 overflow-x-auto border-t border-gray-800">
-          <div className="flex gap-4 min-w-max">
+        <div className="px-2 sm:px-4 py-2 overflow-x-auto border-t border-gray-800">
+          <div className="flex gap-3 sm:gap-4 min-w-max">
             {members.map((member) => {
               const memberPicks = picks.filter(p => p.user_id === member.user_id);
               const isOnClock = currentPickOwner?.user_id === member.user_id && !draftComplete;
               const isMe = member.user_id === user?.id;
               return (
                 <div key={member.id} className={`flex flex-col items-center ${isOnClock ? "opacity-100" : "opacity-50"}`}>
-                  <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-black mb-1 ${
+                  <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-sm font-black mb-1 ${
                     isMe ? "bg-green-600" : "bg-gray-700"
                   } ${isOnClock ? "ring-2 ring-yellow-400 ring-offset-1 ring-offset-gray-900" : ""}`}>
                     {member.team_name.charAt(0).toUpperCase()}
                   </div>
-                  <p className="text-xs text-gray-400 truncate max-w-16 text-center">{member.team_name}</p>
+                  <p className="text-xs text-gray-400 truncate max-w-14 sm:max-w-16 text-center">{member.team_name}</p>
                   <p className="text-xs text-gray-600">{memberPicks.length}/{TOTAL_PICKS_PER_TEAM}</p>
                 </div>
               );
             })}
           </div>
         </div>
+
+        {/* MOBILE TAB SWITCHER */}
+        <div className="md:hidden flex border-t border-gray-800">
+          <button
+            onClick={() => setMobileTab("roster")}
+            className={`flex-1 py-2 text-xs font-bold border-b-2 transition-colors ${
+              mobileTab === "roster" ? "text-green-400 border-green-500 bg-gray-800" : "text-gray-500 border-transparent"
+            }`}
+          >
+            My Roster
+          </button>
+          <button
+            onClick={() => setMobileTab("players")}
+            className={`flex-1 py-2 text-xs font-bold border-b-2 transition-colors ${
+              mobileTab === "players" ? "text-green-400 border-green-500 bg-gray-800" : "text-gray-500 border-transparent"
+            }`}
+          >
+            Players
+          </button>
+          <button
+            onClick={() => setMobileTab("board")}
+            className={`flex-1 py-2 text-xs font-bold border-b-2 transition-colors ${
+              mobileTab === "board" ? "text-green-400 border-green-500 bg-gray-800" : "text-gray-500 border-transparent"
+            }`}
+          >
+            Board / Chat
+          </button>
+        </div>
       </div>
 
-      {/* MAIN CONTENT — 3 panels */}
+      {/* MAIN CONTENT — 3 panels on desktop, tabbed single panel on mobile */}
       <div className="flex flex-1 overflow-hidden">
 
         {/* LEFT PANEL: My Roster */}
-        <div className="w-52 flex-shrink-0 bg-gray-900 border-r border-gray-800 flex flex-col">
+        <div className={`${mobileTab === "roster" ? "flex" : "hidden"} md:flex w-full md:w-52 flex-shrink-0 bg-gray-900 md:border-r border-gray-800 flex-col`}>
           <div className="px-3 py-2 border-b border-gray-800 flex-shrink-0">
             <p className="text-xs font-black text-gray-400 uppercase tracking-wider">
               My Roster ({getMyRoster().length}/{TOTAL_PICKS_PER_TEAM})
@@ -469,7 +499,7 @@ export default function DraftPage() {
         </div>
 
         {/* CENTER PANEL: Player List */}
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className={`${mobileTab === "players" ? "flex" : "hidden"} md:flex flex-1 flex-col overflow-hidden`}>
 
           {/* Queue */}
           {queuedPlayers.length > 0 && (
@@ -510,7 +540,7 @@ export default function DraftPage() {
                     : "bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700"
                 }`}
               >
-                {showAvailableOnly ? "✓ Available Only" : "All Players"}
+                {showAvailableOnly ? "✓ Available" : "All Players"}
               </button>
             </div>
             <div className="flex gap-1 flex-wrap">
@@ -528,8 +558,8 @@ export default function DraftPage() {
             </div>
           </div>
 
-          {/* Column Headers */}
-          <div className="px-3 py-1.5 border-b border-gray-800 bg-gray-900 flex-shrink-0">
+          {/* Column Headers — desktop only */}
+          <div className="hidden md:block px-3 py-1.5 border-b border-gray-800 bg-gray-900 flex-shrink-0">
             <div className="grid text-xs text-gray-500 font-bold uppercase"
               style={{ gridTemplateColumns: "2rem 2.5rem 1fr 4rem 4rem 4rem 6rem" }}>
               <button onClick={() => handleSort("rank")} className="text-left hover:text-gray-300 flex items-center">
@@ -550,64 +580,119 @@ export default function DraftPage() {
             </div>
           </div>
 
-          {/* Player Rows */}
+          {/* Player Rows — Desktop grid */}
           <div className="overflow-y-auto flex-1 pb-6">
-            {filteredPlayers.map((player, index) => {
-              const picked = isPickedAlready(player.id);
-              const inQueue = queue.includes(player.id);
-              return (
-                <div
-                  key={player.id}
-                  className={`px-3 py-2 border-b border-gray-800 grid items-center transition-colors ${
-                    picked ? "opacity-30 bg-gray-950" : "hover:bg-gray-900"
-                  }`}
-                  style={{ gridTemplateColumns: "2rem 2.5rem 1fr 4rem 4rem 4rem 6rem" }}
-                >
-                  <span className="text-xs text-gray-600">{index + 1}</span>
-                  <PlayerAvatar name={player.name} position={player.position} />
-                  <div className="pl-2 min-w-0">
-                    <p className={`font-bold text-sm truncate ${picked ? "line-through text-gray-500" : "text-white"}`}>
-                      {player.name}
-                    </p>
-                    <p className="text-xs text-gray-500">{player.nfl_teams?.abbreviation}</p>
-                  </div>
-                  <span className="text-xs text-gray-400 text-right">{player.nfl_teams?.seed || "—"}</span>
-                  <span className="text-xs text-blue-600 text-right">—</span>
-                  <span className={`text-xs font-bold px-1.5 py-0.5 rounded text-center justify-self-end ${getPositionBadge(player.position)}`}>
-                    {player.position}
-                  </span>
-                  <div className="flex gap-1 justify-end">
-                    {!picked ? (
-                      <>
-                        <button
-                          onClick={() => toggleQueue(player.id)}
-                          title={inQueue ? "Remove from queue" : "Add to queue"}
-                          className={`text-xs px-1.5 py-1 rounded ${inQueue ? "bg-blue-700 text-white" : "bg-gray-800 text-gray-500 hover:bg-gray-700"}`}
-                        >
-                          {inQueue ? "★" : "☆"}
-                        </button>
-                        {isMyTurn() && (
+            {/* Desktop rows */}
+            <div className="hidden md:block">
+              {filteredPlayers.map((player, index) => {
+                const picked = isPickedAlready(player.id);
+                const inQueue = queue.includes(player.id);
+                return (
+                  <div
+                    key={player.id}
+                    className={`px-3 py-2 border-b border-gray-800 grid items-center transition-colors ${
+                      picked ? "opacity-30 bg-gray-950" : "hover:bg-gray-900"
+                    }`}
+                    style={{ gridTemplateColumns: "2rem 2.5rem 1fr 4rem 4rem 4rem 6rem" }}
+                  >
+                    <span className="text-xs text-gray-600">{index + 1}</span>
+                    <PlayerAvatar name={player.name} position={player.position} />
+                    <div className="pl-2 min-w-0">
+                      <p className={`font-bold text-sm truncate ${picked ? "line-through text-gray-500" : "text-white"}`}>
+                        {player.name}
+                      </p>
+                      <p className="text-xs text-gray-500">{player.nfl_teams?.abbreviation}</p>
+                    </div>
+                    <span className="text-xs text-gray-400 text-right">{player.nfl_teams?.seed || "—"}</span>
+                    <span className="text-xs text-blue-600 text-right">—</span>
+                    <span className={`text-xs font-bold px-1.5 py-0.5 rounded text-center justify-self-end ${getPositionBadge(player.position)}`}>
+                      {player.position}
+                    </span>
+                    <div className="flex gap-1 justify-end">
+                      {!picked ? (
+                        <>
                           <button
-                            onClick={() => makePick(player.id)}
-                            className="bg-green-600 hover:bg-green-500 text-white text-xs font-bold px-3 py-1 rounded"
+                            onClick={() => toggleQueue(player.id)}
+                            title={inQueue ? "Remove from queue" : "Add to queue"}
+                            className={`text-xs px-1.5 py-1 rounded ${inQueue ? "bg-blue-700 text-white" : "bg-gray-800 text-gray-500 hover:bg-gray-700"}`}
                           >
-                            Draft
+                            {inQueue ? "★" : "☆"}
                           </button>
-                        )}
-                      </>
-                    ) : (
-                      <span className="text-xs text-gray-700">Drafted</span>
-                    )}
+                          {isMyTurn() && (
+                            <button
+                              onClick={() => makePick(player.id)}
+                              className="bg-green-600 hover:bg-green-500 text-white text-xs font-bold px-3 py-1 rounded"
+                            >
+                              Draft
+                            </button>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-xs text-gray-700">Drafted</span>
+                      )}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
+
+            {/* Mobile rows — stacked card layout */}
+            <div className="md:hidden">
+              {filteredPlayers.map((player, index) => {
+                const picked = isPickedAlready(player.id);
+                const inQueue = queue.includes(player.id);
+                return (
+                  <div
+                    key={player.id}
+                    className={`px-3 py-2.5 border-b border-gray-800 flex items-center gap-2 transition-colors ${
+                      picked ? "opacity-30 bg-gray-950" : "active:bg-gray-900"
+                    }`}
+                  >
+                    <span className="text-xs text-gray-600 w-5 flex-shrink-0">{index + 1}</span>
+                    <PlayerAvatar name={player.name} position={player.position} />
+                    <div className="flex-1 min-w-0">
+                      <p className={`font-bold text-sm truncate ${picked ? "line-through text-gray-500" : "text-white"}`}>
+                        {player.name}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {player.nfl_teams?.abbreviation} · Seed {player.nfl_teams?.seed || "—"}
+                      </p>
+                    </div>
+                    <span className={`text-xs font-bold px-1.5 py-0.5 rounded flex-shrink-0 ${getPositionBadge(player.position)}`}>
+                      {player.position}
+                    </span>
+                    <div className="flex gap-1 flex-shrink-0">
+                      {!picked ? (
+                        <>
+                          <button
+                            onClick={() => toggleQueue(player.id)}
+                            className={`text-xs px-2 py-1.5 rounded ${inQueue ? "bg-blue-700 text-white" : "bg-gray-800 text-gray-500"}`}
+                          >
+                            {inQueue ? "★" : "☆"}
+                          </button>
+                          {isMyTurn() && (
+                            <button
+                              onClick={() => makePick(player.id)}
+                              className="bg-green-600 text-white text-xs font-bold px-3 py-1.5 rounded"
+                            >
+                              Draft
+                            </button>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-xs text-gray-700">Drafted</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
             <div className="h-4" />
           </div>
         </div>
 
         {/* RIGHT PANEL: Board + Chat */}
-        <div className="w-64 flex-shrink-0 bg-gray-900 border-l border-gray-800 flex flex-col">
+        <div className={`${mobileTab === "board" ? "flex" : "hidden"} md:flex w-full md:w-64 flex-shrink-0 bg-gray-900 md:border-l border-gray-800 flex-col`}>
 
           {/* Right Panel Tabs */}
           <div className="flex border-b border-gray-800 flex-shrink-0">
