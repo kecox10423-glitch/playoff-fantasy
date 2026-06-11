@@ -14,16 +14,13 @@ const TIMER_SECONDS = 90;
 
 function PFFLLogo({ size = 28 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-      <path d="M50 5 L90 20 L90 55 Q90 80 50 95 Q10 80 10 55 L10 20 Z" fill="#111827" stroke="#22c55e" strokeWidth="3"/>
-      <path d="M50 12 L83 25 L83 54 Q83 75 50 88 Q17 75 17 54 L17 25 Z" fill="#1f2937"/>
-      <ellipse cx="50" cy="50" rx="20" ry="13" fill="none" stroke="#22c55e" strokeWidth="2"/>
-      <line x1="50" y1="37" x2="50" y2="63" stroke="#22c55e" strokeWidth="1.5"/>
-      <line x1="45" y1="44" x2="55" y2="44" stroke="#22c55e" strokeWidth="1.5"/>
-      <line x1="44" y1="50" x2="56" y2="50" stroke="#22c55e" strokeWidth="1.5"/>
-      <line x1="45" y1="56" x2="55" y2="56" stroke="#22c55e" strokeWidth="1.5"/>
-      <text x="50" y="78" textAnchor="middle" fill="#22c55e" fontSize="9" fontWeight="bold" fontFamily="Arial">PFFL</text>
-    </svg>
+    <img
+      src="/apple-touch-icon.png"
+      alt="PFFL Logo"
+      width={size}
+      height={size}
+      style={{ borderRadius: "20%" }}
+    />
   );
 }
 
