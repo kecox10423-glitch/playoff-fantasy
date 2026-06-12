@@ -60,11 +60,6 @@ export default function LeaguePage() {
   const [members, setMembers] = useState<any[]>([]);
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [copied, setCopied] = useState(false);
-  const [assigningConferences, setAssigningConferences] = useState(false);
-  const [manualConferences, setManualConferences] = useState<{ [userId: string]: string }>({});
-  const [savingConferences, setSavingConferences] = useState(false);
-  const [conferencesSaved, setConferencesSaved] = useState(false);
   const [showAvatarModal, setShowAvatarModal] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
@@ -90,12 +85,6 @@ export default function LeaguePage() {
       setLeague(leagueData);
       setMembers(membersData || []);
 
-      const existing: { [userId: string]: string } = {};
-      (membersData || []).forEach((m: any) => {
-        if (m.conference) existing[m.user_id] = m.conference;
-      });
-      setManualConferences(existing);
-
       // Pre-fill current user's color
       const myMember = (membersData || []).find((m: any) => m.user_id === user.id);
       if (myMember?.avatar_color) setSelectedColor(myMember.avatar_color);
@@ -104,13 +93,6 @@ export default function LeaguePage() {
     }
     load();
   }, []);
-
-  function copyInvite() {
-    const inviteLink = `${window.location.origin}/join/${league.invite_code}`;
-    navigator.clipboard.writeText(inviteLink);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
 
   function openDraftRoom() {
     window.open(
@@ -188,49 +170,6 @@ export default function LeaguePage() {
     setShowAvatarModal(false);
   }
 
-  async function randomlyAssignConferences() {
-    setAssigningConferences(true);
-    const shuffled = [...members].sort(() => Math.random() - 0.5);
-    const half = Math.ceil(shuffled.length / 2);
-
-    const updates: { [userId: string]: string } = {};
-    shuffled.forEach((m, i) => {
-      updates[m.user_id] = i < half ? "A" : "B";
-    });
-
-    for (const [userId, conference] of Object.entries(updates)) {
-      await supabase
-        .from("league_members")
-        .update({ conference })
-        .eq("league_id", leagueId)
-        .eq("user_id", userId);
-    }
-
-    setManualConferences(updates);
-    setMembers(prev => prev.map(m => ({ ...m, conference: updates[m.user_id] })));
-    setAssigningConferences(false);
-    setConferencesSaved(true);
-    setTimeout(() => setConferencesSaved(false), 3000);
-  }
-
-  async function saveManualConferences() {
-    setSavingConferences(true);
-    for (const [userId, conference] of Object.entries(manualConferences)) {
-      await supabase
-        .from("league_members")
-        .update({ conference })
-        .eq("league_id", leagueId)
-        .eq("user_id", userId);
-    }
-    setMembers(prev => prev.map(m => ({
-      ...m,
-      conference: manualConferences[m.user_id] || m.conference
-    })));
-    setSavingConferences(false);
-    setConferencesSaved(true);
-    setTimeout(() => setConferencesSaved(false), 3000);
-  }
-
   if (loading) return (
     <main className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
       <p>Loading...</p>
@@ -245,7 +184,6 @@ export default function LeaguePage() {
 
   const isCommissioner = user?.id === league.commissioner_user_id;
   const spotsLeft = league.num_teams - members.length;
-  const inviteLink = typeof window !== "undefined" ? `${window.location.origin}/join/${league.invite_code}` : "";
   const draftComplete = league.draft_status === "COMPLETED";
   const conferenceEnabled = league.conference_enabled;
   const confAName = league.conference_a_name || "AFC";
@@ -446,109 +384,18 @@ export default function LeaguePage() {
           </div>
         </div>
 
-        {/* Commissioner Panel */}
+        {/* Commissioner Tools Link */}
         {isCommissioner && (
-          <div className="bg-gray-900 rounded-xl p-6 border border-dashed border-gray-700">
-            <h2 className="font-bold mb-4 text-gray-400 uppercase text-xs tracking-wider">
-              ⚙ Commissioner Tools
-            </h2>
-
-            {/* Invite */}
-            <div className="mb-6">
-              <p className="text-sm text-gray-400 mb-2">Invite Link</p>
-              <div className="flex gap-2">
-                <input
-                  readOnly
-                  value={inviteLink}
-                  className="flex-1 bg-gray-800 text-white p-2.5 rounded-lg text-sm border border-gray-700 focus:outline-none min-w-0"
-                />
-                <button
-                  onClick={copyInvite}
-                  className={`font-bold py-2.5 px-5 rounded-lg text-sm transition-colors flex-shrink-0 ${
-                    copied ? "bg-blue-600 text-white" : "bg-green-600 hover:bg-green-500 text-white"
-                  }`}
-                >
-                  {copied ? "✓ Copied!" : "Copy"}
-                </button>
-              </div>
-              <p className="text-gray-600 text-xs mt-1.5">
-                Invite code: <span className="font-mono text-gray-400">{league.invite_code}</span>
-              </p>
+          <button
+            onClick={() => router.push(`/commissioner-tools/${leagueId}`)}
+            className="w-full bg-gray-900 hover:bg-gray-800 border border-dashed border-gray-700 rounded-xl p-5 flex items-center justify-between transition-colors"
+          >
+            <div className="text-left">
+              <p className="font-bold text-white">⚙ Commissioner Tools</p>
+              <p className="text-gray-500 text-xs mt-0.5">Invite link, conferences, scoring, manual draft, email league</p>
             </div>
-
-            {/* Conference Assignment */}
-            {conferenceEnabled && (
-              <div className="mb-6 bg-gray-800 rounded-xl p-5">
-                <p className="font-bold text-white mb-1">Conference Assignment</p>
-                <p className="text-gray-400 text-xs mb-4">
-                  Randomly assign teams to {confAName} and {confBName}, or set manually.
-                </p>
-
-                <button
-                  onClick={randomlyAssignConferences}
-                  disabled={assigningConferences}
-                  className="bg-green-600 hover:bg-green-500 disabled:bg-gray-700 text-white font-bold py-2 px-5 rounded-lg text-sm mb-4 transition-colors"
-                >
-                  {assigningConferences ? "Assigning..." : "🎲 Randomly Assign Conferences"}
-                </button>
-
-                <p className="text-gray-500 text-xs mb-3">Or assign manually:</p>
-                <div className="flex flex-col gap-2">
-                  {members.map(member => (
-                    <div key={member.user_id} className="flex items-center justify-between">
-                      <span className="text-sm text-gray-300">{member.team_name}</span>
-                      <select
-                        value={manualConferences[member.user_id] || ""}
-                        onChange={(e) => setManualConferences(prev => ({
-                          ...prev,
-                          [member.user_id]: e.target.value
-                        }))}
-                        className="bg-gray-700 text-white text-sm px-3 py-1.5 rounded-lg border border-gray-600 focus:outline-none focus:border-green-500"
-                      >
-                        <option value="">Unassigned</option>
-                        <option value="A">{confAName}</option>
-                        <option value="B">{confBName}</option>
-                      </select>
-                    </div>
-                  ))}
-                </div>
-
-                <button
-                  onClick={saveManualConferences}
-                  disabled={savingConferences}
-                  className={`mt-4 w-full font-bold py-2 rounded-lg text-sm transition-colors ${
-                    conferencesSaved
-                      ? "bg-blue-600 text-white"
-                      : "bg-gray-700 hover:bg-gray-600 text-white"
-                  }`}
-                >
-                  {savingConferences ? "Saving..." : conferencesSaved ? "✓ Saved!" : "Save Conference Assignments"}
-                </button>
-              </div>
-            )}
-
-            {/* Commissioner Actions */}
-            <div className="flex gap-3 flex-wrap">
-              <button
-                onClick={() => router.push(`/manual-draft/${leagueId}`)}
-                className="bg-blue-700 hover:bg-blue-600 text-white font-bold py-2 px-5 rounded-lg text-sm transition-colors"
-              >
-                Manual Draft Upload
-              </button>
-              <button
-                onClick={() => router.push(`/league-settings/${leagueId}`)}
-                className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-5 rounded-lg text-sm transition-colors"
-              >
-                Scoring Settings
-              </button>
-              <button
-                onClick={() => router.push(`/league-email/${leagueId}`)}
-                className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-5 rounded-lg text-sm transition-colors"
-              >
-                ✉ Email League
-              </button>
-            </div>
-          </div>
+            <span className="text-gray-600">→</span>
+          </button>
         )}
       </div>
     </main>

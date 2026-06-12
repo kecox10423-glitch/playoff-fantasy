@@ -130,10 +130,10 @@ export default function LeagueEmailPage() {
 
       <div className="max-w-2xl mx-auto px-4 py-8">
         <button
-          onClick={() => router.push(`/league/${leagueId}`)}
+          onClick={() => router.push(`/commissioner-tools/${leagueId}`)}
           className="text-gray-400 hover:text-white text-sm block mb-4"
         >
-          ← Back to League
+          ← Back to Commissioner Tools
         </button>
 
         <h1 className="text-2xl font-black mb-1">Email League</h1>

@@ -257,10 +257,10 @@ export default function LeagueSettingsPage() {
         <div className="max-w-4xl mx-auto flex justify-between items-center">
           <div>
             <button
-              onClick={() => router.push(`/league/${leagueId}`)}
+              onClick={() => router.push(`/commissioner-tools/${leagueId}`)}
               className="text-gray-400 hover:text-white text-sm block mb-1"
             >
-              ← Back to League
+              ← Back to Commissioner Tools
             </button>
             <h1 className="text-xl font-bold">{league?.name} — Settings</h1>
           </div>

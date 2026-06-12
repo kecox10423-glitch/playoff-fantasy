@@ -46,7 +46,7 @@ export default function Nav({ leagueId, leagueName, isCommissioner, activePage }
     { label: "Draft", page: "draft", path: `/draft/${leagueId}` },
     { label: "Standings", page: "standings", path: `/standings/${leagueId}` },
     { label: "Rosters", page: "roster", path: `/roster/${leagueId}` },
-    ...(isCommissioner ? [{ label: "⚙ Settings", page: "settings", path: `/league-settings/${leagueId}` }] : []),
+    ...(isCommissioner ? [{ label: "⚙ Settings", page: "settings", path: `/commissioner-tools/${leagueId}` }] : []),
   ] : [];
 
   return (
