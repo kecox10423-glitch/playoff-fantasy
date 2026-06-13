@@ -65,6 +65,9 @@ export default function LeaguePage() {
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [selectedColor, setSelectedColor] = useState("green");
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [editingTeamName, setEditingTeamName] = useState(false);
+  const [teamNameInput, setTeamNameInput] = useState("");
+  const [savingTeamName, setSavingTeamName] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const params = useParams();
@@ -85,9 +88,10 @@ export default function LeaguePage() {
       setLeague(leagueData);
       setMembers(membersData || []);
 
-      // Pre-fill current user's color
+      // Pre-fill current user's color and team name
       const myMember = (membersData || []).find((m: any) => m.user_id === user.id);
       if (myMember?.avatar_color) setSelectedColor(myMember.avatar_color);
+      if (myMember?.team_name) setTeamNameInput(myMember.team_name);
 
       setLoading(false);
     }
@@ -168,6 +172,27 @@ export default function LeaguePage() {
 
     setUploadingAvatar(false);
     setShowAvatarModal(false);
+  }
+
+  async function handleSaveTeamName() {
+    if (!user) return;
+    const trimmed = teamNameInput.trim();
+    if (!trimmed) return;
+
+    setSavingTeamName(true);
+
+    await supabase
+      .from("league_members")
+      .update({ team_name: trimmed })
+      .eq("league_id", leagueId)
+      .eq("user_id", user.id);
+
+    setMembers(prev => prev.map(m =>
+      m.user_id === user.id ? { ...m, team_name: trimmed } : m
+    ));
+
+    setSavingTeamName(false);
+    setEditingTeamName(false);
   }
 
   if (loading) return (
@@ -346,35 +371,78 @@ export default function LeaguePage() {
             Teams ({members.length}/{league.num_teams})
           </h2>
           <div className="flex flex-col gap-1">
-            {members.map((member, i) => (
-              <div key={member.id} className="flex items-center gap-3 py-2.5 border-b border-gray-800 last:border-0">
-                <div className="relative flex-shrink-0">
-                  <Avatar member={member} size="md" />
-                  {member.user_id === user?.id && (
-                    <button
-                      onClick={() => setShowAvatarModal(true)}
-                      className="absolute -bottom-1 -right-1 w-5 h-5 bg-gray-600 hover:bg-gray-500 rounded-full flex items-center justify-center text-xs"
-                      title="Edit avatar"
-                    >
-                      ✏
-                    </button>
-                  )}
+            {members.map((member, i) => {
+              const isMe = member.user_id === user?.id;
+              const isEditingThisName = isMe && editingTeamName;
+
+              return (
+                <div key={member.id} className="flex items-center gap-3 py-2.5 border-b border-gray-800 last:border-0">
+                  <div className="relative flex-shrink-0">
+                    <Avatar member={member} size="md" />
+                    {isMe && (
+                      <button
+                        onClick={() => setShowAvatarModal(true)}
+                        className="absolute -bottom-1 -right-1 w-5 h-5 bg-gray-600 hover:bg-gray-500 rounded-full flex items-center justify-center text-xs"
+                        title="Edit avatar"
+                      >
+                        ✏
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    {isEditingThisName ? (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={teamNameInput}
+                          onChange={(e) => setTeamNameInput(e.target.value)}
+                          onKeyDown={(e) => e.key === "Enter" && handleSaveTeamName()}
+                          maxLength={50}
+                          autoFocus
+                          className="bg-gray-800 text-white px-2 py-1 rounded text-sm font-bold border border-gray-700 focus:outline-none focus:border-green-500 min-w-0 flex-1"
+                        />
+                        <button
+                          onClick={handleSaveTeamName}
+                          disabled={savingTeamName || !teamNameInput.trim()}
+                          className="text-xs bg-green-600 hover:bg-green-500 disabled:bg-gray-700 text-white font-bold px-2.5 py-1 rounded flex-shrink-0"
+                        >
+                          {savingTeamName ? "..." : "Save"}
+                        </button>
+                        <button
+                          onClick={() => { setEditingTeamName(false); setTeamNameInput(member.team_name); }}
+                          className="text-xs text-gray-500 hover:text-white px-1 flex-shrink-0"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold truncate">{member.team_name}</span>
+                        {isMe && (
+                          <>
+                            <span className="text-xs text-gray-500">(You)</span>
+                            <button
+                              onClick={() => { setEditingTeamName(true); setTeamNameInput(member.team_name); }}
+                              className="text-gray-600 hover:text-white text-xs flex-shrink-0"
+                              title="Edit team name"
+                            >
+                              ✏
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {getConferenceBadge(member)}
+                    {member.user_id === league.commissioner_user_id && (
+                      <span className="text-xs bg-green-900 text-green-400 px-2 py-0.5 rounded-full">Commissioner</span>
+                    )}
+                    <span className="text-xs text-gray-600">#{i + 1}</span>
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <span className="font-bold">{member.team_name}</span>
-                  {member.user_id === user?.id && (
-                    <span className="text-xs text-gray-500 ml-2">(You)</span>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  {getConferenceBadge(member)}
-                  {member.user_id === league.commissioner_user_id && (
-                    <span className="text-xs bg-green-900 text-green-400 px-2 py-0.5 rounded-full">Commissioner</span>
-                  )}
-                  <span className="text-xs text-gray-600">#{i + 1}</span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
             {spotsLeft > 0 && (
               <div className="flex items-center gap-3 py-2.5 opacity-40">
                 <div className="w-8 h-8 rounded-full border border-dashed border-gray-600 flex items-center justify-center text-gray-600 text-sm flex-shrink-0">+</div>
