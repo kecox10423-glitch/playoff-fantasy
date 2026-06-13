@@ -75,6 +75,8 @@ export default function DraftPage() {
   const [queue, setQueue] = useState<number[]>([]);
   const [rightPanel, setRightPanel] = useState<"board" | "chat">("board");
   const [mobileTab, setMobileTab] = useState<MobileTab>("players");
+  const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
+  const [startingDraft, setStartingDraft] = useState(false);
   const timerRef = useRef<any>(null);
   const picksRef = useRef<any[]>([]);
   const membersRef = useRef<any[]>([]);
@@ -113,15 +115,60 @@ export default function DraftPage() {
         .from("draft_picks").select("*").eq("league_id", leagueId)
         .order("pick_number");
 
+      const { data: chatData } = await supabase
+        .from("draft_chat_messages").select("*").eq("league_id", leagueId)
+        .order("created_at");
+
       setLeague(leagueData);
       setMembers(membersData || []);
       membersRef.current = membersData || [];
       setPlayers(playersData || []);
       setPicks(picksData || []);
       picksRef.current = picksData || [];
+      setChatMessages((chatData || []).map((m: any) => ({
+        text: m.message,
+        team: m.team_name,
+        time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      })));
       setLoading(false);
+
+      // Presence channel — track who's in the draft room
+      const presenceChannel = supabase.channel(`presence-${leagueId}`, {
+        config: { presence: { key: user.id } },
+      });
+
+      presenceChannel
+        .on("presence", { event: "sync" } as any, () => {
+          const state = presenceChannel.presenceState();
+          setOnlineUserIds(Object.keys(state));
+        })
+        .subscribe(async (status) => {
+          if (status === "SUBSCRIBED") {
+            const myMember = (membersData || []).find((m: any) => m.user_id === user.id);
+            await presenceChannel.track({
+              user_id: user.id,
+              team_name: myMember?.team_name || "Unknown",
+            });
+          }
+        });
+
+      // Subscribe to league status changes (Start Draft trigger)
+      const leagueSub = supabase
+        .channel(`league-status-${leagueId}`)
+        .on("postgres_changes", {
+          event: "UPDATE", schema: "public", table: "leagues",
+          filter: `id=eq.${leagueId}`
+        }, (payload) => {
+          setLeague((prev: any) => ({ ...prev, ...payload.new }));
+        })
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(presenceChannel);
+        supabase.removeChannel(leagueSub);
+      };
     }
-    load();
+    const cleanup = load();
 
     const picksSub = supabase
       .channel(`draft-picks-${leagueId}`)
@@ -151,11 +198,14 @@ export default function DraftPage() {
       supabase.removeChannel(picksSub);
       supabase.removeChannel(chatSub);
       if (timerRef.current) clearInterval(timerRef.current);
+      cleanup.then(fn => fn && fn());
     };
   }, []);
 
+  // Timer only runs once draft is IN_PROGRESS
   useEffect(() => {
     if (loading) return;
+    if (league?.draft_status !== "IN_PROGRESS") return;
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = setInterval(() => {
       setTimeLeft(prev => {
@@ -164,7 +214,18 @@ export default function DraftPage() {
       });
     }, 1000);
     return () => clearInterval(timerRef.current);
-  }, [picks, loading, members]);
+  }, [picks, loading, members, league?.draft_status]);
+
+  async function handleStartDraft() {
+    setStartingDraft(true);
+    await supabase
+      .from("leagues")
+      .update({ draft_status: "IN_PROGRESS" })
+      .eq("id", leagueId);
+    setLeague((prev: any) => ({ ...prev, draft_status: "IN_PROGRESS" }));
+    setTimeLeft(TIMER_SECONDS);
+    setStartingDraft(false);
+  }
 
   function getCurrentPickNumber() { return picks.length + 1; }
 
@@ -297,12 +358,25 @@ export default function DraftPage() {
   async function sendChat() {
     if (!chatInput.trim()) return;
     const myMember = members.find(m => m.user_id === user?.id);
+    const teamName = myMember?.team_name || "Unknown";
+    const text = chatInput.trim();
     const message = {
-      text: chatInput.trim(),
-      team: myMember?.team_name || "Unknown",
+      text,
+      team: teamName,
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
+
+    // Broadcast for instant delivery to others currently online
     await supabase.channel(`chat-${leagueId}`).send({ type: "broadcast", event: "chat", payload: message });
+
+    // Persist to database so it survives refresh / late joins
+    await supabase.from("draft_chat_messages").insert({
+      league_id: leagueId,
+      user_id: user.id,
+      team_name: teamName,
+      message: text,
+    });
+
     setChatMessages(prev => [...prev, message]);
     setChatInput("");
   }
@@ -346,6 +420,73 @@ export default function DraftPage() {
       <p>Loading draft...</p>
     </main>
   );
+
+  const isCommissioner = user?.id === league?.commissioner_user_id;
+
+  // WAITING ROOM — shown until commissioner starts the draft
+  if (league?.draft_status !== "IN_PROGRESS" && league?.draft_status !== "COMPLETED") {
+    const scheduledTime = league?.draft_time ? new Date(league.draft_time) : null;
+
+    return (
+      <main className="min-h-screen bg-gray-950 text-white flex flex-col items-center justify-center p-6">
+        <PFFLLogo size={48} />
+        <h1 className="text-2xl font-black mt-4 mb-1">{league?.name}</h1>
+        <p className="text-gray-400 text-sm mb-8">Draft Room — Waiting to Start</p>
+
+        {scheduledTime && (
+          <div className="bg-gray-900 border border-gray-800 rounded-xl px-6 py-3 mb-6 text-center">
+            <p className="text-gray-500 text-xs uppercase tracking-wider mb-1">Scheduled Draft Time</p>
+            <p className="text-white font-bold">
+              {scheduledTime.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}
+            </p>
+          </div>
+        )}
+
+        {/* Members in room */}
+        <div className="w-full max-w-sm bg-gray-900 rounded-xl border border-gray-800 p-5 mb-6">
+          <p className="text-xs text-gray-500 uppercase tracking-wider mb-3">
+            In Draft Room ({onlineUserIds.length}/{members.length})
+          </p>
+          <div className="flex flex-col gap-2">
+            {members.map(member => {
+              const isOnline = onlineUserIds.includes(member.user_id);
+              return (
+                <div key={member.id} className="flex items-center gap-3">
+                  <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${isOnline ? "bg-green-500" : "bg-gray-700"}`} />
+                  <span className={`text-sm ${isOnline ? "text-white font-bold" : "text-gray-500"}`}>
+                    {member.team_name}
+                  </span>
+                  {member.user_id === user?.id && <span className="text-xs text-gray-500">(You)</span>}
+                  {member.user_id === league?.commissioner_user_id && (
+                    <span className="text-xs bg-green-900 text-green-400 px-2 py-0.5 rounded-full ml-auto">Commissioner</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {isCommissioner ? (
+          <button
+            onClick={handleStartDraft}
+            disabled={startingDraft}
+            className="bg-green-600 hover:bg-green-500 disabled:bg-gray-700 text-white font-black text-lg px-10 py-4 rounded-xl mb-4 transition-colors"
+          >
+            {startingDraft ? "Starting..." : "🏈 Start Draft Now"}
+          </button>
+        ) : (
+          <p className="text-gray-400 text-sm mb-4">Waiting for the commissioner to start the draft...</p>
+        )}
+
+        <button
+          onClick={handleLeaveDraft}
+          className="text-gray-500 hover:text-white text-sm border border-gray-700 px-4 py-2 rounded hover:border-gray-500 transition-colors"
+        >
+          Leave Draft Room
+        </button>
+      </main>
+    );
+  }
 
   return (
     <div className="h-screen bg-gray-950 text-white flex flex-col overflow-hidden">
@@ -580,7 +721,7 @@ export default function DraftPage() {
             </div>
           </div>
 
-          {/* Player Rows — Desktop grid */}
+          {/* Player Rows */}
           <div className="overflow-y-auto flex-1 pb-6">
             {/* Desktop rows */}
             <div className="hidden md:block">
@@ -636,7 +777,7 @@ export default function DraftPage() {
               })}
             </div>
 
-            {/* Mobile rows — stacked card layout */}
+            {/* Mobile rows */}
             <div className="md:hidden">
               {filteredPlayers.map((player, index) => {
                 const picked = isPickedAlready(player.id);
