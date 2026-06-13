@@ -420,7 +420,7 @@ export default function LeaguePage() {
                         <span className="font-bold truncate">{member.team_name}</span>
                         {isMe && (
                           <>
-                            <span className="text-xs text-gray-500">(You)</span>
+                            <span className="hidden sm:inline text-xs text-gray-500">(You)</span>
                             <button
                               onClick={() => { setEditingTeamName(true); setTeamNameInput(member.team_name); }}
                               className="text-gray-600 hover:text-white text-xs flex-shrink-0"
@@ -436,9 +436,12 @@ export default function LeaguePage() {
                   <div className="flex items-center gap-2 flex-shrink-0">
                     {getConferenceBadge(member)}
                     {member.user_id === league.commissioner_user_id && (
-                      <span className="text-xs bg-green-900 text-green-400 px-2 py-0.5 rounded-full">Commissioner</span>
+                      <span className="text-xs bg-green-900 text-green-400 w-5 h-5 sm:w-auto sm:h-auto sm:px-2 sm:py-0.5 rounded-full flex items-center justify-center font-bold">
+                        <span className="sm:hidden">C</span>
+                        <span className="hidden sm:inline">Commissioner</span>
+                      </span>
                     )}
-                    <span className="text-xs text-gray-600">#{i + 1}</span>
+                    <span className="hidden sm:inline text-xs text-gray-600">#{i + 1}</span>
                   </div>
                 </div>
               );
