@@ -15,9 +15,10 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Playoff Fantasy",
   description: "Draft NFL playoff players. When teams get eliminated, your players stop scoring.",
+  manifest: "/manifest.json",
   icons: {
-    icon: "/favicon.svg",
-    apple: "/apple-icon.svg",
+    icon: "/apple-touch-icon.png",
+    apple: "/apple-touch-icon.png",
   },
 };
 
