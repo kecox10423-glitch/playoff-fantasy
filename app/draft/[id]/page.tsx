@@ -70,6 +70,7 @@ export default function DraftPage() {
   const [sortKey, setSortKey] = useState<SortKey>("rank");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [timeLeft, setTimeLeft] = useState(TIMER_SECONDS);
+  const [countdown, setCountdown] = useState<{ d: number; h: number; m: number; s: number } | null>(null);
   const [chatMessages, setChatMessages] = useState<any[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [queue, setQueue] = useState<number[]>([]);
@@ -78,6 +79,7 @@ export default function DraftPage() {
   const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
   const [startingDraft, setStartingDraft] = useState(false);
   const timerRef = useRef<any>(null);
+  const countdownRef = useRef<any>(null);
   const picksRef = useRef<any[]>([]);
   const membersRef = useRef<any[]>([]);
   const userRef = useRef<any>(null);
@@ -198,11 +200,12 @@ export default function DraftPage() {
       supabase.removeChannel(picksSub);
       supabase.removeChannel(chatSub);
       if (timerRef.current) clearInterval(timerRef.current);
+      if (countdownRef.current) clearInterval(countdownRef.current);
       cleanup.then(fn => fn && fn());
     };
   }, []);
 
-  // Timer only runs once draft is IN_PROGRESS
+  // Pick timer — only runs once draft is IN_PROGRESS
   useEffect(() => {
     if (loading) return;
     if (league?.draft_status !== "IN_PROGRESS") return;
@@ -215,6 +218,38 @@ export default function DraftPage() {
     }, 1000);
     return () => clearInterval(timerRef.current);
   }, [picks, loading, members, league?.draft_status]);
+
+  // Countdown timer — runs pre-draft if a draft_time is scheduled
+  useEffect(() => {
+    if (loading) return;
+    const isPreDraft = league?.draft_status !== "IN_PROGRESS" && league?.draft_status !== "COMPLETED";
+    if (!isPreDraft || !league?.draft_time) {
+      setCountdown(null);
+      return;
+    }
+
+    function tick() {
+      const target = new Date(league.draft_time).getTime();
+      const now = Date.now();
+      const diff = target - now;
+
+      if (diff <= 0) {
+        setCountdown({ d: 0, h: 0, m: 0, s: 0 });
+        return;
+      }
+
+      const d = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const s = Math.floor((diff % (1000 * 60)) / 1000);
+      setCountdown({ d, h, m, s });
+    }
+
+    tick();
+    if (countdownRef.current) clearInterval(countdownRef.current);
+    countdownRef.current = setInterval(tick, 1000);
+    return () => clearInterval(countdownRef.current);
+  }, [loading, league?.draft_status, league?.draft_time]);
 
   async function handleStartDraft() {
     setStartingDraft(true);
@@ -285,7 +320,7 @@ export default function DraftPage() {
   }
 
   async function makePick(playerId: number) {
-    if (!isMyTurn()) return;
+    if (!isMyTurn() || isPreDraft) return;
     const pickNumber = getCurrentPickNumber();
     const numTeams = members.length;
     const round = Math.ceil(pickNumber / numTeams);
@@ -381,6 +416,7 @@ export default function DraftPage() {
     setChatInput("");
   }
 
+  const isPreDraft = league?.draft_status !== "IN_PROGRESS" && league?.draft_status !== "COMPLETED";
   const totalPicks = members.length * TOTAL_PICKS_PER_TEAM;
   const draftComplete = picks.length >= totalPicks;
   const currentPickOwner = getPickOwner(getCurrentPickNumber());
@@ -389,6 +425,7 @@ export default function DraftPage() {
   const lastPickOwner = lastPick ? members.find(m => m.user_id === lastPick.user_id) : null;
   const autoPickPlayer = players.find(p => !isPickedAlready(p.id));
   const currentRound = Math.ceil(getCurrentPickNumber() / (members.length || 1));
+  const isCommissioner = user?.id === league?.commissioner_user_id;
 
   const queuedPlayers = queue
     .map(id => players.find(p => p.id === id))
@@ -421,73 +458,6 @@ export default function DraftPage() {
     </main>
   );
 
-  const isCommissioner = user?.id === league?.commissioner_user_id;
-
-  // WAITING ROOM — shown until commissioner starts the draft
-  if (league?.draft_status !== "IN_PROGRESS" && league?.draft_status !== "COMPLETED") {
-    const scheduledTime = league?.draft_time ? new Date(league.draft_time) : null;
-
-    return (
-      <main className="min-h-screen bg-gray-950 text-white flex flex-col items-center justify-center p-6">
-        <PFFLLogo size={48} />
-        <h1 className="text-2xl font-black mt-4 mb-1">{league?.name}</h1>
-        <p className="text-gray-400 text-sm mb-8">Draft Room — Waiting to Start</p>
-
-        {scheduledTime && (
-          <div className="bg-gray-900 border border-gray-800 rounded-xl px-6 py-3 mb-6 text-center">
-            <p className="text-gray-500 text-xs uppercase tracking-wider mb-1">Scheduled Draft Time</p>
-            <p className="text-white font-bold">
-              {scheduledTime.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}
-            </p>
-          </div>
-        )}
-
-        {/* Members in room */}
-        <div className="w-full max-w-sm bg-gray-900 rounded-xl border border-gray-800 p-5 mb-6">
-          <p className="text-xs text-gray-500 uppercase tracking-wider mb-3">
-            In Draft Room ({onlineUserIds.length}/{members.length})
-          </p>
-          <div className="flex flex-col gap-2">
-            {members.map(member => {
-              const isOnline = onlineUserIds.includes(member.user_id);
-              return (
-                <div key={member.id} className="flex items-center gap-3">
-                  <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${isOnline ? "bg-green-500" : "bg-gray-700"}`} />
-                  <span className={`text-sm ${isOnline ? "text-white font-bold" : "text-gray-500"}`}>
-                    {member.team_name}
-                  </span>
-                  {member.user_id === user?.id && <span className="text-xs text-gray-500">(You)</span>}
-                  {member.user_id === league?.commissioner_user_id && (
-                    <span className="text-xs bg-green-900 text-green-400 px-2 py-0.5 rounded-full ml-auto">Commissioner</span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {isCommissioner ? (
-          <button
-            onClick={handleStartDraft}
-            disabled={startingDraft}
-            className="bg-green-600 hover:bg-green-500 disabled:bg-gray-700 text-white font-black text-lg px-10 py-4 rounded-xl mb-4 transition-colors"
-          >
-            {startingDraft ? "Starting..." : "🏈 Start Draft Now"}
-          </button>
-        ) : (
-          <p className="text-gray-400 text-sm mb-4">Waiting for the commissioner to start the draft...</p>
-        )}
-
-        <button
-          onClick={handleLeaveDraft}
-          className="text-gray-500 hover:text-white text-sm border border-gray-700 px-4 py-2 rounded hover:border-gray-500 transition-colors"
-        >
-          Leave Draft Room
-        </button>
-      </main>
-    );
-  }
-
   return (
     <div className="h-screen bg-gray-950 text-white flex flex-col overflow-hidden">
 
@@ -505,26 +475,61 @@ export default function DraftPage() {
           </div>
 
           <div className="text-center flex-shrink-0">
-            <div className={`text-2xl sm:text-4xl font-mono font-black ${timeLeft <= 10 ? "text-red-400 animate-pulse" : "text-green-400"}`}>
-              {draftComplete ? "✅" : `${String(Math.floor(timeLeft / 60)).padStart(2, "0")}:${String(timeLeft % 60).padStart(2, "0")}`}
-            </div>
-            <p className="text-xs text-gray-500 whitespace-nowrap">
-              {draftComplete ? "Complete" : `Rd ${currentRound} · Pick ${getCurrentPickNumber()}/${totalPicks}`}
-            </p>
+            {isPreDraft ? (
+              countdown ? (
+                <>
+                  <div className="text-lg sm:text-2xl font-mono font-black text-blue-400">
+                    {countdown.d > 0 && `${countdown.d}d `}
+                    {String(countdown.h).padStart(2, "0")}:{String(countdown.m).padStart(2, "0")}:{String(countdown.s).padStart(2, "0")}
+                  </div>
+                  <p className="text-xs text-gray-500 whitespace-nowrap">Until Draft Starts</p>
+                </>
+              ) : (
+                <>
+                  <div className="text-lg sm:text-2xl font-black text-gray-500">⏳</div>
+                  <p className="text-xs text-gray-500 whitespace-nowrap">Not Scheduled</p>
+                </>
+              )
+            ) : (
+              <>
+                <div className={`text-2xl sm:text-4xl font-mono font-black ${timeLeft <= 10 ? "text-red-400 animate-pulse" : "text-green-400"}`}>
+                  {draftComplete ? "✅" : `${String(Math.floor(timeLeft / 60)).padStart(2, "0")}:${String(timeLeft % 60).padStart(2, "0")}`}
+                </div>
+                <p className="text-xs text-gray-500 whitespace-nowrap">
+                  {draftComplete ? "Complete" : `Rd ${currentRound} · Pick ${getCurrentPickNumber()}/${totalPicks}`}
+                </p>
+              </>
+            )}
           </div>
 
-          <button
-            onClick={handleLeaveDraft}
-            className="text-gray-500 hover:text-white text-xs sm:text-sm border border-gray-700 px-2 sm:px-3 py-1 rounded hover:border-gray-500 transition-colors flex-shrink-0 whitespace-nowrap"
-          >
-            Leave
-          </button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {isPreDraft && isCommissioner && (
+              <button
+                onClick={handleStartDraft}
+                disabled={startingDraft}
+                className="bg-green-600 hover:bg-green-500 disabled:bg-gray-700 text-white text-xs sm:text-sm font-bold px-2 sm:px-3 py-1 rounded transition-colors whitespace-nowrap"
+              >
+                {startingDraft ? "Starting..." : "🏈 Start"}
+              </button>
+            )}
+            <button
+              onClick={handleLeaveDraft}
+              className="text-gray-500 hover:text-white text-xs sm:text-sm border border-gray-700 px-2 sm:px-3 py-1 rounded hover:border-gray-500 transition-colors whitespace-nowrap"
+            >
+              Leave
+            </button>
+          </div>
         </div>
 
         {/* Row 2: Status + Last Pick + Auto Pick */}
-        <div className={`px-2 sm:px-4 py-2 flex items-center justify-between gap-2 ${isMyTurn() && !draftComplete ? "bg-green-900" : ""}`}>
+        <div className={`px-2 sm:px-4 py-2 flex items-center justify-between gap-2 ${isMyTurn() && !draftComplete && !isPreDraft ? "bg-green-900" : ""}`}>
           <div className="flex-1 min-w-0">
-            {draftComplete ? (
+            {isPreDraft ? (
+              <p className="text-blue-300 text-xs sm:text-sm">
+                🔍 Pre-Draft Lobby — browse players, set your queue, and chat. Drafting opens when the clock hits zero
+                {isCommissioner ? ` or you hit Start.` : `.`}
+              </p>
+            ) : draftComplete ? (
               <p className="font-bold text-green-400 text-sm">🏆 Draft Complete!</p>
             ) : isMyTurn() ? (
               <p className="font-black text-green-300 text-sm sm:text-lg">⚡ You're on the clock!</p>
@@ -535,18 +540,24 @@ export default function DraftPage() {
             )}
           </div>
           <div className="hidden sm:flex gap-8 text-xs flex-shrink-0">
-            {lastPickPlayer && (
+            {!isPreDraft && lastPickPlayer && (
               <div className="text-right">
                 <p className="text-gray-600 uppercase tracking-wider text-xs mb-0.5">Last Pick</p>
                 <p className="text-white font-bold">{lastPickPlayer.name}</p>
                 <p className="text-gray-500">{lastPickPlayer.position} · {lastPickOwner?.team_name}</p>
               </div>
             )}
-            {autoPickPlayer && !draftComplete && (
+            {!isPreDraft && autoPickPlayer && !draftComplete && (
               <div className="text-right">
                 <p className="text-gray-600 uppercase tracking-wider text-xs mb-0.5">Auto Pick Would Be</p>
                 <p className="text-white font-bold">{autoPickPlayer.name}</p>
                 <p className="text-gray-500">{autoPickPlayer.position} · {autoPickPlayer.nfl_teams?.abbreviation}</p>
+              </div>
+            )}
+            {isPreDraft && (
+              <div className="text-right">
+                <p className="text-gray-600 uppercase tracking-wider text-xs mb-0.5">In Draft Room</p>
+                <p className="text-white font-bold">{onlineUserIds.length}/{members.length} Online</p>
               </div>
             )}
           </div>
@@ -557,17 +568,23 @@ export default function DraftPage() {
           <div className="flex gap-3 sm:gap-4 min-w-max">
             {members.map((member) => {
               const memberPicks = picks.filter(p => p.user_id === member.user_id);
-              const isOnClock = currentPickOwner?.user_id === member.user_id && !draftComplete;
+              const isOnClock = currentPickOwner?.user_id === member.user_id && !draftComplete && !isPreDraft;
               const isMe = member.user_id === user?.id;
+              const isOnline = onlineUserIds.includes(member.user_id);
               return (
-                <div key={member.id} className={`flex flex-col items-center ${isOnClock ? "opacity-100" : "opacity-50"}`}>
-                  <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-sm font-black mb-1 ${
+                <div key={member.id} className={`flex flex-col items-center ${isOnClock || (isPreDraft && isOnline) ? "opacity-100" : "opacity-50"}`}>
+                  <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-sm font-black mb-1 relative ${
                     isMe ? "bg-green-600" : "bg-gray-700"
                   } ${isOnClock ? "ring-2 ring-yellow-400 ring-offset-1 ring-offset-gray-900" : ""}`}>
                     {member.team_name.charAt(0).toUpperCase()}
+                    {isPreDraft && isOnline && (
+                      <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 rounded-full border border-gray-900" />
+                    )}
                   </div>
                   <p className="text-xs text-gray-400 truncate max-w-14 sm:max-w-16 text-center">{member.team_name}</p>
-                  <p className="text-xs text-gray-600">{memberPicks.length}/{TOTAL_PICKS_PER_TEAM}</p>
+                  <p className="text-xs text-gray-600">
+                    {isPreDraft ? (member.user_id === league?.commissioner_user_id ? "Commish" : "") : `${memberPicks.length}/${TOTAL_PICKS_PER_TEAM}`}
+                  </p>
                 </div>
               );
             })}
@@ -614,6 +631,11 @@ export default function DraftPage() {
             </p>
           </div>
           <div className="overflow-y-auto flex-1 px-2 py-2 pb-6">
+            {isPreDraft && (
+              <p className="text-gray-600 text-xs text-center mt-4 mb-4 px-2">
+                Your roster will fill up once the draft begins. Use this time to set your player queue!
+              </p>
+            )}
             {Object.entries(ROSTER_SLOTS).map(([pos, slots]) => (
               <div key={pos} className="mb-3">
                 <div className="flex justify-between items-center mb-1">
@@ -651,7 +673,7 @@ export default function DraftPage() {
                   <div key={player.id} className="flex items-center gap-2 bg-blue-900 rounded px-2 py-1 flex-shrink-0">
                     <span className="text-xs font-bold text-white">{player.name}</span>
                     <span className="text-xs text-blue-300">{player.position}</span>
-                    {isMyTurn() && (
+                    {isMyTurn() && !isPreDraft && (
                       <button onClick={() => makePick(player.id)} className="bg-green-600 text-white text-xs px-2 py-0.5 rounded font-bold">
                         Draft
                       </button>
@@ -759,7 +781,7 @@ export default function DraftPage() {
                           >
                             {inQueue ? "★" : "☆"}
                           </button>
-                          {isMyTurn() && (
+                          {isMyTurn() && !isPreDraft && (
                             <button
                               onClick={() => makePick(player.id)}
                               className="bg-green-600 hover:bg-green-500 text-white text-xs font-bold px-3 py-1 rounded"
@@ -811,7 +833,7 @@ export default function DraftPage() {
                           >
                             {inQueue ? "★" : "☆"}
                           </button>
-                          {isMyTurn() && (
+                          {isMyTurn() && !isPreDraft && (
                             <button
                               onClick={() => makePick(player.id)}
                               className="bg-green-600 text-white text-xs font-bold px-3 py-1.5 rounded"
@@ -858,7 +880,11 @@ export default function DraftPage() {
           {/* Draft Board */}
           {rightPanel === "board" && (
             <div className="overflow-y-auto flex-1 px-2 py-2 pb-6">
-              {picks.length === 0 ? (
+              {isPreDraft ? (
+                <p className="text-gray-600 text-xs text-center mt-8 px-2">
+                  Draft hasn't started yet — picks will appear here once it begins.
+                </p>
+              ) : picks.length === 0 ? (
                 <p className="text-gray-600 text-xs text-center mt-8">No picks yet — draft is about to begin!</p>
               ) : (
                 [...picks].reverse().map((pick) => {
