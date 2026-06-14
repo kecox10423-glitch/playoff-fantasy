@@ -19,6 +19,9 @@ export default function CommissionerToolsPage() {
   const [manualConferences, setManualConferences] = useState<{ [userId: string]: string }>({});
   const [savingConferences, setSavingConferences] = useState(false);
   const [conferencesSaved, setConferencesSaved] = useState(false);
+  const [draftTimeInput, setDraftTimeInput] = useState("");
+  const [savingDraftTime, setSavingDraftTime] = useState(false);
+  const [draftTimeSaved, setDraftTimeSaved] = useState(false);
   const router = useRouter();
   const params = useParams();
   const leagueId = params.id as string;
@@ -37,6 +40,15 @@ export default function CommissionerToolsPage() {
 
       setLeague(leagueData);
       setMembers(membersData || []);
+
+      if (leagueData?.draft_time) {
+        // Convert stored UTC timestamp to a local datetime-local input value
+        const d = new Date(leagueData.draft_time);
+        const localISO = new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+          .toISOString()
+          .slice(0, 16);
+        setDraftTimeInput(localISO);
+      }
 
       const existing: { [userId: string]: string } = {};
       (membersData || []).forEach((m: any) => {
@@ -99,6 +111,51 @@ export default function CommissionerToolsPage() {
     setTimeout(() => setConferencesSaved(false), 3000);
   }
 
+  async function saveDraftTime() {
+    setSavingDraftTime(true);
+
+    const isoValue = draftTimeInput ? new Date(draftTimeInput).toISOString() : null;
+
+    await supabase
+      .from("leagues")
+      .update({ draft_time: isoValue })
+      .eq("id", leagueId);
+
+    setLeague((prev: any) => ({ ...prev, draft_time: isoValue }));
+    setSavingDraftTime(false);
+    setDraftTimeSaved(true);
+    setTimeout(() => setDraftTimeSaved(false), 3000);
+  }
+
+  async function clearDraftTime() {
+    setSavingDraftTime(true);
+    await supabase
+      .from("leagues")
+      .update({ draft_time: null })
+      .eq("id", leagueId);
+    setLeague((prev: any) => ({ ...prev, draft_time: null }));
+    setDraftTimeInput("");
+    setSavingDraftTime(false);
+  }
+
+  function sendDraftReminder() {
+    if (!league.draft_time) return;
+    const draftDate = new Date(league.draft_time);
+    const formatted = draftDate.toLocaleString([], {
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+
+    const subject = `Draft Reminder: ${league.name}`;
+    const message = `Hey team!\n\nJust a reminder that our draft is scheduled for:\n\n${formatted} (your local time)\n\nMake sure you're ready to go — head to the draft room a few minutes early to check in. See you there!\n\n— ${league.name}`;
+
+    const queryParams = new URLSearchParams({ subject, message });
+    router.push(`/league-email/${leagueId}?${queryParams.toString()}`);
+  }
+
   if (loading) return (
     <main className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
       <p>Loading...</p>
@@ -125,6 +182,7 @@ export default function CommissionerToolsPage() {
   const conferenceEnabled = league.conference_enabled;
   const confAName = league.conference_a_name || "AFC";
   const confBName = league.conference_b_name || "NFC";
+  const currentDraftTime = league.draft_time ? new Date(league.draft_time) : null;
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
@@ -167,6 +225,64 @@ export default function CommissionerToolsPage() {
           <p className="text-gray-600 text-xs mt-1.5">
             Invite code: <span className="font-mono text-gray-400">{league.invite_code}</span>
           </p>
+        </div>
+
+        {/* Schedule Draft */}
+        <div className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800">
+          <p className="font-bold text-white mb-1">Schedule Draft</p>
+          <p className="text-gray-400 text-xs mb-4">
+            Set a date and time for your draft. Everyone sees this in their own local time, and a countdown will show in the draft room.
+          </p>
+
+          {currentDraftTime && (
+            <div className="bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 mb-4">
+              <p className="text-gray-500 text-xs uppercase tracking-wider mb-1">Currently Scheduled</p>
+              <p className="text-white font-bold">
+                {currentDraftTime.toLocaleString([], { weekday: "long", month: "long", day: "numeric", hour: "numeric", minute: "2-digit" })}
+              </p>
+            </div>
+          )}
+
+          <div className="flex gap-2 mb-4">
+            <input
+              type="datetime-local"
+              value={draftTimeInput}
+              onChange={(e) => setDraftTimeInput(e.target.value)}
+              className="flex-1 bg-gray-800 text-white p-2.5 rounded-lg text-sm border border-gray-700 focus:outline-none focus:border-green-500 min-w-0"
+            />
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              onClick={saveDraftTime}
+              disabled={savingDraftTime || !draftTimeInput}
+              className={`flex-1 font-bold py-2.5 rounded-lg text-sm transition-colors ${
+                draftTimeSaved
+                  ? "bg-blue-600 text-white"
+                  : "bg-green-600 hover:bg-green-500 disabled:bg-gray-700 text-white"
+              }`}
+            >
+              {savingDraftTime ? "Saving..." : draftTimeSaved ? "✓ Saved!" : "Save Draft Time"}
+            </button>
+            {currentDraftTime && (
+              <button
+                onClick={clearDraftTime}
+                disabled={savingDraftTime}
+                className="bg-red-900 hover:bg-red-800 text-red-300 font-bold py-2.5 px-4 rounded-lg text-sm"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
+          {currentDraftTime && (
+            <button
+              onClick={sendDraftReminder}
+              className="w-full mt-3 bg-gray-800 hover:bg-gray-700 text-white font-bold py-2.5 rounded-lg text-sm transition-colors"
+            >
+              ✉ Send Draft Reminder Email
+            </button>
+          )}
         </div>
 
         {/* Conference Assignment */}

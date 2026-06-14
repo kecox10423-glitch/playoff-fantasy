@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 import Nav from "../../components/Nav";
 
 const supabase = createClient(
@@ -22,6 +22,7 @@ export default function LeagueEmailPage() {
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const leagueId = params.id as string;
 
   useEffect(() => {
@@ -39,6 +40,13 @@ export default function LeagueEmailPage() {
       setLeague(leagueData);
       setMembers(membersData || []);
       setSelectedUserIds((membersData || []).map((m: any) => m.user_id));
+
+      // Pre-fill subject/message if provided via query params (e.g. draft reminder)
+      const prefilledSubject = searchParams.get("subject");
+      const prefilledMessage = searchParams.get("message");
+      if (prefilledSubject) setSubject(prefilledSubject);
+      if (prefilledMessage) setMessage(prefilledMessage);
+
       setLoading(false);
     }
     load();
