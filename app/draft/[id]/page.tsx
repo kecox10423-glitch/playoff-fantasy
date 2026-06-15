@@ -12,6 +12,13 @@ const ROSTER_SLOTS = { QB: 2, RB: 3, WR: 4, TE: 2, K: 2, DST: 2 };
 const TOTAL_PICKS_PER_TEAM = 15;
 const TIMER_SECONDS = 90;
 
+// Supabase returns timestamps without a timezone indicator (e.g. "2027-01-09 02:30:00"),
+// which JS interprets as LOCAL time instead of UTC. This forces correct UTC parsing.
+function parseUTCTimestamp(raw: string): Date {
+  if (raw.endsWith("Z") || raw.includes("+")) return new Date(raw);
+  return new Date(raw.replace(" ", "T") + "Z");
+}
+
 function PFFLLogo({ size = 28 }: { size?: number }) {
   return (
     <img
@@ -229,7 +236,8 @@ export default function DraftPage() {
     }
 
     function tick() {
-      const target = new Date(league.draft_time).getTime();
+      const raw = league.draft_time as string;
+      const target = parseUTCTimestamp(raw).getTime();
       const now = Date.now();
       const diff = target - now;
 

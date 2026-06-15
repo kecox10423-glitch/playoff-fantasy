@@ -9,6 +9,13 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+// Supabase returns timestamps without a timezone indicator (e.g. "2027-01-09 02:30:00"),
+// which JS interprets as LOCAL time instead of UTC. This forces correct UTC parsing.
+function parseUTCTimestamp(raw: string): Date {
+  if (raw.endsWith("Z") || raw.includes("+")) return new Date(raw);
+  return new Date(raw.replace(" ", "T") + "Z");
+}
+
 export default function CommissionerToolsPage() {
   const [league, setLeague] = useState<any>(null);
   const [members, setMembers] = useState<any[]>([]);
@@ -45,7 +52,7 @@ export default function CommissionerToolsPage() {
       setMembers(membersData || []);
 
       if (leagueData?.draft_time) {
-        const d = new Date(leagueData.draft_time);
+        const d = parseUTCTimestamp(leagueData.draft_time);
         // Date input value (YYYY-MM-DD) in local time
         const yyyy = d.getFullYear();
         const mm = String(d.getMonth() + 1).padStart(2, "0");
@@ -163,7 +170,7 @@ export default function CommissionerToolsPage() {
 
   function sendDraftReminder() {
     if (!league.draft_time) return;
-    const draftDateObj = new Date(league.draft_time);
+    const draftDateObj = parseUTCTimestamp(league.draft_time);
     const formatted = draftDateObj.toLocaleString([], {
       weekday: "long",
       month: "long",
@@ -205,7 +212,7 @@ export default function CommissionerToolsPage() {
   const conferenceEnabled = league.conference_enabled;
   const confAName = league.conference_a_name || "AFC";
   const confBName = league.conference_b_name || "NFC";
-  const currentDraftTime = league.draft_time ? new Date(league.draft_time) : null;
+  const currentDraftTime = league.draft_time ? parseUTCTimestamp(league.draft_time) : null;
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
