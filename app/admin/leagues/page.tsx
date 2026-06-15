@@ -1,0 +1,132 @@
+"use client";
+import { useEffect, useState } from "react";
+import { createClient } from "@supabase/supabase-js";
+import { useRouter } from "next/navigation";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
+const ADMIN_USER_ID = "ae7339be-6503-45c1-91d0-eb09b9806a74";
+
+export default function AdminLeaguesPage() {
+  const [user, setUser] = useState<any>(null);
+  const [leagues, setLeagues] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const router = useRouter();
+
+  useEffect(() => {
+    async function load() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { router.push("/login"); return; }
+      if (user.id !== ADMIN_USER_ID) { router.push("/dashboard"); return; }
+      setUser(user);
+
+      const { data: leaguesData } = await supabase
+        .from("leagues")
+        .select("*, league_members(count)")
+        .order("created_at", { ascending: false });
+
+      setLeagues(leaguesData || []);
+      setLoading(false);
+    }
+    load();
+  }, []);
+
+  async function handleDelete(leagueId: string) {
+    setDeletingId(leagueId);
+
+    const res = await fetch("/api/admin/delete-league", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: user.id, leagueId }),
+    });
+
+    if (res.ok) {
+      setLeagues(prev => prev.filter(l => l.id !== leagueId));
+    } else {
+      const data = await res.json();
+      alert(`Failed to delete: ${data.error}`);
+    }
+
+    setDeletingId(null);
+    setConfirmId(null);
+  }
+
+  if (loading) return (
+    <main className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
+      <p>Loading...</p>
+    </main>
+  );
+
+  return (
+    <main className="min-h-screen bg-gray-950 text-white">
+      <div className="max-w-4xl mx-auto px-4 py-8">
+        <button
+          onClick={() => router.push("/dashboard")}
+          className="text-gray-400 hover:text-white text-sm block mb-4"
+        >
+          ← Back to Dashboard
+        </button>
+
+        <h1 className="text-2xl font-black mb-1">Admin: All Leagues</h1>
+        <p className="text-gray-400 text-sm mb-8">{leagues.length} total leagues</p>
+
+        <div className="bg-gray-900 rounded-xl border border-gray-800 divide-y divide-gray-800">
+          {leagues.map(league => {
+            const memberCount = league.league_members?.[0]?.count ?? 0;
+            const isConfirming = confirmId === league.id;
+            const isDeleting = deletingId === league.id;
+
+            return (
+              <div key={league.id} className="px-4 py-3 flex items-center justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <p className="font-bold text-white truncate">{league.name}</p>
+                  <p className="text-gray-500 text-xs mt-0.5">
+                    {memberCount}/{league.num_teams} teams · {league.draft_status} · {league.draft_type}
+                  </p>
+                  <p className="text-gray-600 text-xs mt-0.5">
+                    Created {new Date(league.created_at).toLocaleDateString()} · Invite: {league.invite_code}
+                  </p>
+                </div>
+
+                <div className="flex-shrink-0">
+                  {isConfirming ? (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleDelete(league.id)}
+                        disabled={isDeleting}
+                        className="bg-red-700 hover:bg-red-600 disabled:bg-gray-700 text-white font-bold text-xs px-3 py-1.5 rounded"
+                      >
+                        {isDeleting ? "Deleting..." : "Confirm Delete"}
+                      </button>
+                      <button
+                        onClick={() => setConfirmId(null)}
+                        className="bg-gray-800 hover:bg-gray-700 text-white font-bold text-xs px-3 py-1.5 rounded"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmId(league.id)}
+                      className="bg-gray-800 hover:bg-red-900 text-gray-400 hover:text-red-300 font-bold text-xs px-3 py-1.5 rounded transition-colors"
+                    >
+                      Delete
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          {leagues.length === 0 && (
+            <p className="text-gray-600 text-sm px-4 py-6 text-center">No leagues found.</p>
+          )}
+        </div>
+      </div>
+    </main>
+  );
+}
