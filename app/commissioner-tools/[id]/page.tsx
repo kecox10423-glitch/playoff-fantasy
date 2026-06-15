@@ -19,7 +19,10 @@ export default function CommissionerToolsPage() {
   const [manualConferences, setManualConferences] = useState<{ [userId: string]: string }>({});
   const [savingConferences, setSavingConferences] = useState(false);
   const [conferencesSaved, setConferencesSaved] = useState(false);
-  const [draftTimeInput, setDraftTimeInput] = useState("");
+  const [draftDate, setDraftDate] = useState("");
+  const [draftHour, setDraftHour] = useState("7");
+  const [draftMinute, setDraftMinute] = useState("00");
+  const [draftAmPm, setDraftAmPm] = useState("PM");
   const [savingDraftTime, setSavingDraftTime] = useState(false);
   const [draftTimeSaved, setDraftTimeSaved] = useState(false);
   const router = useRouter();
@@ -42,12 +45,22 @@ export default function CommissionerToolsPage() {
       setMembers(membersData || []);
 
       if (leagueData?.draft_time) {
-        // Convert stored UTC timestamp to a local datetime-local input value
         const d = new Date(leagueData.draft_time);
-        const localISO = new Date(d.getTime() - d.getTimezoneOffset() * 60000)
-          .toISOString()
-          .slice(0, 16);
-        setDraftTimeInput(localISO);
+        // Date input value (YYYY-MM-DD) in local time
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, "0");
+        const dd = String(d.getDate()).padStart(2, "0");
+        setDraftDate(`${yyyy}-${mm}-${dd}`);
+
+        let hours = d.getHours();
+        const minutes = d.getMinutes();
+        const ampm = hours >= 12 ? "PM" : "AM";
+        hours = hours % 12;
+        if (hours === 0) hours = 12;
+
+        setDraftHour(String(hours));
+        setDraftMinute(minutes >= 30 ? "30" : "00");
+        setDraftAmPm(ampm);
       }
 
       const existing: { [userId: string]: string } = {};
@@ -112,9 +125,16 @@ export default function CommissionerToolsPage() {
   }
 
   async function saveDraftTime() {
+    if (!draftDate) return;
     setSavingDraftTime(true);
 
-    const isoValue = draftTimeInput ? new Date(draftTimeInput).toISOString() : null;
+    let hour24 = parseInt(draftHour, 10);
+    if (draftAmPm === "PM" && hour24 !== 12) hour24 += 12;
+    if (draftAmPm === "AM" && hour24 === 12) hour24 = 0;
+
+    const [year, month, day] = draftDate.split("-").map(Number);
+    const localDate = new Date(year, month - 1, day, hour24, parseInt(draftMinute, 10), 0);
+    const isoValue = localDate.toISOString();
 
     await supabase
       .from("leagues")
@@ -134,14 +154,17 @@ export default function CommissionerToolsPage() {
       .update({ draft_time: null })
       .eq("id", leagueId);
     setLeague((prev: any) => ({ ...prev, draft_time: null }));
-    setDraftTimeInput("");
+    setDraftDate("");
+    setDraftHour("7");
+    setDraftMinute("00");
+    setDraftAmPm("PM");
     setSavingDraftTime(false);
   }
 
   function sendDraftReminder() {
     if (!league.draft_time) return;
-    const draftDate = new Date(league.draft_time);
-    const formatted = draftDate.toLocaleString([], {
+    const draftDateObj = new Date(league.draft_time);
+    const formatted = draftDateObj.toLocaleString([], {
       weekday: "long",
       month: "long",
       day: "numeric",
@@ -243,19 +266,46 @@ export default function CommissionerToolsPage() {
             </div>
           )}
 
-          <div className="flex gap-2 mb-4">
+          <div className="flex flex-col sm:flex-row gap-2 mb-4">
             <input
-              type="datetime-local"
-              value={draftTimeInput}
-              onChange={(e) => setDraftTimeInput(e.target.value)}
+              type="date"
+              value={draftDate}
+              onChange={(e) => setDraftDate(e.target.value)}
               className="flex-1 bg-gray-800 text-white p-2.5 rounded-lg text-sm border border-gray-700 focus:outline-none focus:border-green-500 min-w-0"
             />
+            <div className="flex gap-2">
+              <select
+                value={draftHour}
+                onChange={(e) => setDraftHour(e.target.value)}
+                className="bg-gray-800 text-white p-2.5 rounded-lg text-sm border border-gray-700 focus:outline-none focus:border-green-500"
+              >
+                {Array.from({ length: 12 }, (_, i) => i + 1).map(h => (
+                  <option key={h} value={h}>{h}</option>
+                ))}
+              </select>
+              <select
+                value={draftMinute}
+                onChange={(e) => setDraftMinute(e.target.value)}
+                className="bg-gray-800 text-white p-2.5 rounded-lg text-sm border border-gray-700 focus:outline-none focus:border-green-500"
+              >
+                <option value="00">:00</option>
+                <option value="30">:30</option>
+              </select>
+              <select
+                value={draftAmPm}
+                onChange={(e) => setDraftAmPm(e.target.value)}
+                className="bg-gray-800 text-white p-2.5 rounded-lg text-sm border border-gray-700 focus:outline-none focus:border-green-500"
+              >
+                <option value="AM">AM</option>
+                <option value="PM">PM</option>
+              </select>
+            </div>
           </div>
 
           <div className="flex gap-2">
             <button
               onClick={saveDraftTime}
-              disabled={savingDraftTime || !draftTimeInput}
+              disabled={savingDraftTime || !draftDate}
               className={`flex-1 font-bold py-2.5 rounded-lg text-sm transition-colors ${
                 draftTimeSaved
                   ? "bg-blue-600 text-white"
