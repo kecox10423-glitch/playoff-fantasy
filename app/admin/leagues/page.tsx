@@ -16,6 +16,8 @@ export default function AdminLeaguesPage() {
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [syncingStats, setSyncingStats] = useState(false);
+  const [syncResult, setSyncResult] = useState<any>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -56,6 +58,21 @@ export default function AdminLeaguesPage() {
     setConfirmId(null);
   }
 
+  async function handleSyncStats() {
+    setSyncingStats(true);
+    setSyncResult(null);
+
+    const res = await fetch("/api/admin/sync-stats", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: user.id }),
+    });
+
+    const data = await res.json();
+    setSyncResult(data);
+    setSyncingStats(false);
+  }
+
   if (loading) return (
     <main className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
       <p>Loading...</p>
@@ -72,9 +89,46 @@ export default function AdminLeaguesPage() {
           ← Back to Dashboard
         </button>
 
-        <h1 className="text-2xl font-black mb-1">Admin: All Leagues</h1>
+        <h1 className="text-2xl font-black mb-1">Admin</h1>
         <p className="text-gray-400 text-sm mb-8">{leagues.length} total leagues</p>
 
+        {/* Sync Stats */}
+        <div className="bg-gray-900 rounded-xl border border-gray-800 p-5 mb-6">
+          <p className="font-bold text-white mb-1">Player Stats Sync</p>
+          <p className="text-gray-500 text-xs mb-4">
+            Pulls 2025 full season stats from Sleeper API for all players and stores them in the database. Run this once before the mock draft.
+          </p>
+          <button
+            onClick={handleSyncStats}
+            disabled={syncingStats}
+            className="bg-green-600 hover:bg-green-500 disabled:bg-gray-700 text-white font-bold px-5 py-2.5 rounded-lg text-sm transition-colors"
+          >
+            {syncingStats ? "Syncing... (this may take 30-60 seconds)" : "🔄 Sync 2025 Player Stats"}
+          </button>
+
+          {syncResult && (
+            <div className={`mt-4 p-4 rounded-lg text-sm ${syncResult.success ? "bg-green-900 border border-green-700" : "bg-red-900 border border-red-700"}`}>
+              {syncResult.success ? (
+                <>
+                  <p className="text-green-400 font-bold mb-1">✓ Sync complete</p>
+                  <p className="text-green-300">Matched: {syncResult.matched} players</p>
+                  <p className="text-green-300">Total players: {syncResult.total}</p>
+                  {syncResult.unmatched?.length > 0 && (
+                    <div className="mt-2">
+                      <p className="text-yellow-400 font-bold">Unmatched ({syncResult.unmatched.length}):</p>
+                      <p className="text-yellow-300 text-xs">{syncResult.unmatched.join(", ")}</p>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p className="text-red-400 font-bold">Error: {syncResult.error}</p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Leagues List */}
+        <h2 className="font-bold text-gray-300 uppercase text-xs tracking-wider mb-3">All Leagues</h2>
         <div className="bg-gray-900 rounded-xl border border-gray-800 divide-y divide-gray-800">
           {leagues.map(league => {
             const memberCount = league.league_members?.[0]?.count ?? 0;
