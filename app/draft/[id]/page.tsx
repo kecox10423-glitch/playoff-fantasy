@@ -72,8 +72,8 @@ export default function DraftPage() {
   const [search, setSearch] = useState("");
   const [positionFilter, setPositionFilter] = useState("ALL");
   const [showAvailableOnly, setShowAvailableOnly] = useState(true);
-  const [sortKey, setSortKey] = useState<SortKey>("rank");
-  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [sortKey, setSortKey] = useState<SortKey>("proj");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [timeLeft, setTimeLeft] = useState(TIMER_SECONDS);
   const [countdown, setCountdown] = useState<{ d: number; h: number; m: number; s: number } | null>(null);
   const [chatMessages, setChatMessages] = useState<any[]>([]);
@@ -118,6 +118,13 @@ export default function DraftPage() {
         .from("players").select("*, nfl_teams(name, abbreviation, seed)")
         .eq("season", 2026);
 
+      // Fetch season stats (week=0 is full season total)
+      const { data: statsData } = await supabase
+        .from("player_stats")
+        .select("player_id, fantasy_points")
+        .eq("season", 2026)
+        .eq("week", 0);
+
       const { data: picksData } = await supabase
         .from("draft_picks").select("*").eq("league_id", leagueId)
         .order("pick_number");
@@ -126,10 +133,22 @@ export default function DraftPage() {
         .from("draft_chat_messages").select("*").eq("league_id", leagueId)
         .order("created_at");
 
+      // Build stats lookup map
+      const statsMap: { [playerId: number]: number } = {};
+      (statsData || []).forEach((s: any) => {
+        statsMap[s.player_id] = parseFloat(s.fantasy_points) || 0;
+      });
+
+      // Merge stats onto players
+      const playersWithStats = (playersData || []).map((p: any) => ({
+        ...p,
+        fantasy_points: statsMap[p.id] || 0,
+      }));
+
       setLeague(leagueData);
       setMembers(membersData || []);
       membersRef.current = membersData || [];
-      setPlayers(playersData || []);
+      setPlayers(playersWithStats);
       setPicks(picksData || []);
       picksRef.current = picksData || [];
       setChatMessages((chatData || []).map((m: any) => ({
@@ -270,7 +289,6 @@ export default function DraftPage() {
     return m[index];
   }
 
-  // Returns the snake order for a given round as an array of members
   function getSnakeOrderForRound(round: number) {
     if (!members.length) return [];
     const isEvenRound = round % 2 === 0;
@@ -305,7 +323,7 @@ export default function DraftPage() {
       setSortDir(prev => prev === "asc" ? "desc" : "asc");
     } else {
       setSortKey(key);
-      setSortDir("asc");
+      setSortDir(key === "proj" ? "desc" : "asc");
     }
   }
 
@@ -360,7 +378,10 @@ export default function DraftPage() {
     if (!owner || owner.user_id !== currentUser?.id) return;
 
     const pickedIds = currentPicks.map((p: any) => p.player_id);
-    const available = players.find(p => !pickedIds.includes(p.id));
+    // Auto pick highest fantasy points available
+    const available = [...players]
+      .filter(p => !pickedIds.includes(p.id))
+      .sort((a, b) => (b.fantasy_points || 0) - (a.fantasy_points || 0))[0];
     if (!available) return;
 
     const numTeams = currentMembers.length;
@@ -420,7 +441,9 @@ export default function DraftPage() {
   const lastPick = picks.length > 0 ? picks[picks.length - 1] : null;
   const lastPickPlayer = lastPick ? players.find(p => p.id === lastPick.player_id) : null;
   const lastPickOwner = lastPick ? members.find(m => m.user_id === lastPick.user_id) : null;
-  const autoPickPlayer = players.find(p => !isPickedAlready(p.id));
+  const autoPickPlayer = [...players]
+    .filter(p => !isPickedAlready(p.id))
+    .sort((a, b) => (b.fantasy_points || 0) - (a.fantasy_points || 0))[0];
   const currentRound = Math.ceil(currentPickNumber / (members.length || 1));
   const isCommissioner = user?.id === league?.commissioner_user_id;
   const isEvenRound = currentRound % 2 === 0;
@@ -445,8 +468,8 @@ export default function DraftPage() {
     switch (sortKey) {
       case "name": aVal = a.name; bVal = b.name; break;
       case "seed": aVal = a.nfl_teams?.seed || 99; bVal = b.nfl_teams?.seed || 99; break;
-      case "proj": aVal = 0; bVal = 0; break;
-      default: aVal = players.indexOf(a); bVal = players.indexOf(b);
+      case "proj": aVal = a.fantasy_points || 0; bVal = b.fantasy_points || 0; break;
+      default: aVal = a.fantasy_points || 0; bVal = b.fantasy_points || 0; break;
     }
     if (aVal < bVal) return sortDir === "asc" ? -1 : 1;
     if (aVal > bVal) return sortDir === "asc" ? 1 : -1;
@@ -567,7 +590,6 @@ export default function DraftPage() {
         {/* Row 3: Snake Order Strip */}
         <div className="border-t border-gray-800 px-2 sm:px-4 py-2 overflow-x-auto">
           {isPreDraft ? (
-            // Pre-draft: show members in draft order with online indicators
             <div className="flex items-center gap-1 sm:gap-2 min-w-max">
               <p className="text-gray-600 text-xs mr-1 flex-shrink-0">Draft Order:</p>
               {members.map((member, i) => {
@@ -591,9 +613,7 @@ export default function DraftPage() {
           ) : draftComplete ? (
             <p className="text-gray-600 text-xs text-center py-1">Draft complete — all picks are in!</p>
           ) : (
-            // Active draft: show snake order for current round
             <div className="flex items-center gap-1 min-w-max">
-              {/* Round label + direction arrow */}
               <div className="flex flex-col items-center mr-2 flex-shrink-0">
                 <p className="text-gray-500 text-xs font-bold">Rd {currentRound}</p>
                 <p className="text-gray-600 text-xs">{isEvenRound ? "←" : "→"}</p>
@@ -608,12 +628,9 @@ export default function DraftPage() {
 
                 return (
                   <div key={member.id} className="flex flex-col items-center">
-                    {/* Pick number above */}
                     <p className={`text-xs font-mono mb-0.5 ${isOnClock ? "text-yellow-400 font-bold" : isNext ? "text-gray-400" : "text-gray-700"}`}>
                       {(currentRound - 1) * members.length + positionInRound + 1}
                     </p>
-
-                    {/* Avatar circle */}
                     <div className={`relative w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-xs font-black transition-all ${
                       isMe ? "bg-green-600" : "bg-gray-700"
                     } ${isOnClock
@@ -629,15 +646,11 @@ export default function DraftPage() {
                         <span className="absolute -top-1 left-1/2 -translate-x-1/2 text-yellow-400 text-xs leading-none">▼</span>
                       )}
                     </div>
-
-                    {/* Team name below */}
                     <p className={`text-xs mt-0.5 truncate max-w-12 sm:max-w-16 text-center ${
                       isOnClock ? "text-yellow-300 font-bold" : isNext ? "text-gray-400" : "text-gray-600"
                     }`}>
                       {member.team_name.split(" ")[0]}
                     </p>
-
-                    {/* Picks count */}
                     <p className="text-xs text-gray-700 font-mono">{memberTotalPicks}</p>
                   </div>
                 );
@@ -821,7 +834,9 @@ export default function DraftPage() {
                       <p className="text-xs text-gray-500">{player.nfl_teams?.abbreviation}</p>
                     </div>
                     <span className="text-xs text-gray-400 text-right">{player.nfl_teams?.seed || "—"}</span>
-                    <span className="text-xs text-blue-600 text-right">—</span>
+                    <span className="text-xs text-blue-400 font-bold text-right">
+                      {player.fantasy_points ? player.fantasy_points.toFixed(1) : "—"}
+                    </span>
                     <span className={`text-xs font-bold px-1.5 py-0.5 rounded text-center justify-self-end ${getPositionBadge(player.position)}`}>
                       {player.position}
                     </span>
@@ -871,7 +886,7 @@ export default function DraftPage() {
                         {player.name}
                       </p>
                       <p className="text-xs text-gray-500">
-                        {player.nfl_teams?.abbreviation} · Seed {player.nfl_teams?.seed || "—"}
+                        {player.nfl_teams?.abbreviation} · {player.fantasy_points ? player.fantasy_points.toFixed(1) + ' pts' : 'No stats'}
                       </p>
                     </div>
                     <span className={`text-xs font-bold px-1.5 py-0.5 rounded flex-shrink-0 ${getPositionBadge(player.position)}`}>
