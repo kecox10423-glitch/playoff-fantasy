@@ -12,8 +12,6 @@ const ROSTER_SLOTS = { QB: 2, RB: 3, WR: 4, TE: 2, K: 2, DST: 2 };
 const TOTAL_PICKS_PER_TEAM = 15;
 const TIMER_SECONDS = 90;
 
-// Supabase returns timestamps without a timezone indicator (e.g. "2027-01-09 02:30:00"),
-// which JS interprets as LOCAL time instead of UTC. This forces correct UTC parsing.
 function parseUTCTimestamp(raw: string): Date {
   if (raw.endsWith("Z") || raw.includes("+")) return new Date(raw);
   return new Date(raw.replace(" ", "T") + "Z");
@@ -141,7 +139,6 @@ export default function DraftPage() {
       })));
       setLoading(false);
 
-      // Presence channel — track who's in the draft room
       const presenceChannel = supabase.channel(`presence-${leagueId}`, {
         config: { presence: { key: user.id } },
       });
@@ -161,7 +158,6 @@ export default function DraftPage() {
           }
         });
 
-      // Subscribe to league status changes (Start Draft trigger)
       const leagueSub = supabase
         .channel(`league-status-${leagueId}`)
         .on("postgres_changes", {
@@ -212,7 +208,7 @@ export default function DraftPage() {
     };
   }, []);
 
-  // Pick timer — only runs once draft is IN_PROGRESS
+  // Pick timer
   useEffect(() => {
     if (loading) return;
     if (league?.draft_status !== "IN_PROGRESS") return;
@@ -226,7 +222,7 @@ export default function DraftPage() {
     return () => clearInterval(timerRef.current);
   }, [picks, loading, members, league?.draft_status]);
 
-  // Countdown timer — runs pre-draft if a draft_time is scheduled
+  // Countdown timer
   useEffect(() => {
     if (loading) return;
     const isPreDraft = league?.draft_status !== "IN_PROGRESS" && league?.draft_status !== "COMPLETED";
@@ -240,12 +236,7 @@ export default function DraftPage() {
       const target = parseUTCTimestamp(raw).getTime();
       const now = Date.now();
       const diff = target - now;
-
-      if (diff <= 0) {
-        setCountdown({ d: 0, h: 0, m: 0, s: 0 });
-        return;
-      }
-
+      if (diff <= 0) { setCountdown({ d: 0, h: 0, m: 0, s: 0 }); return; }
       const d = Math.floor(diff / (1000 * 60 * 60 * 24));
       const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
       const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
@@ -261,10 +252,7 @@ export default function DraftPage() {
 
   async function handleStartDraft() {
     setStartingDraft(true);
-    await supabase
-      .from("leagues")
-      .update({ draft_status: "IN_PROGRESS" })
-      .eq("id", leagueId);
+    await supabase.from("leagues").update({ draft_status: "IN_PROGRESS" }).eq("id", leagueId);
     setLeague((prev: any) => ({ ...prev, draft_status: "IN_PROGRESS" }));
     setTimeLeft(TIMER_SECONDS);
     setStartingDraft(false);
@@ -280,6 +268,13 @@ export default function DraftPage() {
     const posInRound = ((pickNumber - 1) % numTeams);
     const index = round % 2 === 0 ? numTeams - 1 - posInRound : posInRound;
     return m[index];
+  }
+
+  // Returns the snake order for a given round as an array of members
+  function getSnakeOrderForRound(round: number) {
+    if (!members.length) return [];
+    const isEvenRound = round % 2 === 0;
+    return isEvenRound ? [...members].reverse() : [...members];
   }
 
   function isMyTurn() {
@@ -320,11 +315,8 @@ export default function DraftPage() {
   }
 
   function handleLeaveDraft() {
-    if (window.opener) {
-      window.close();
-    } else {
-      router.push(`/league/${leagueId}`);
-    }
+    if (window.opener) { window.close(); }
+    else { router.push(`/league/${leagueId}`); }
   }
 
   async function makePick(playerId: number) {
@@ -408,18 +400,13 @@ export default function DraftPage() {
       team: teamName,
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
-
-    // Broadcast for instant delivery to others currently online
     await supabase.channel(`chat-${leagueId}`).send({ type: "broadcast", event: "chat", payload: message });
-
-    // Persist to database so it survives refresh / late joins
     await supabase.from("draft_chat_messages").insert({
       league_id: leagueId,
       user_id: user.id,
       team_name: teamName,
       message: text,
     });
-
     setChatMessages(prev => [...prev, message]);
     setChatInput("");
   }
@@ -427,13 +414,19 @@ export default function DraftPage() {
   const isPreDraft = league?.draft_status !== "IN_PROGRESS" && league?.draft_status !== "COMPLETED";
   const totalPicks = members.length * TOTAL_PICKS_PER_TEAM;
   const draftComplete = picks.length >= totalPicks;
-  const currentPickOwner = getPickOwner(getCurrentPickNumber());
+  const currentPickNumber = getCurrentPickNumber();
+  const currentPickOwner = getPickOwner(currentPickNumber);
+  const nextPickOwner = draftComplete ? null : getPickOwner(currentPickNumber + 1);
   const lastPick = picks.length > 0 ? picks[picks.length - 1] : null;
   const lastPickPlayer = lastPick ? players.find(p => p.id === lastPick.player_id) : null;
   const lastPickOwner = lastPick ? members.find(m => m.user_id === lastPick.user_id) : null;
   const autoPickPlayer = players.find(p => !isPickedAlready(p.id));
-  const currentRound = Math.ceil(getCurrentPickNumber() / (members.length || 1));
+  const currentRound = Math.ceil(currentPickNumber / (members.length || 1));
   const isCommissioner = user?.id === league?.commissioner_user_id;
+  const isEvenRound = currentRound % 2 === 0;
+  const snakeOrderThisRound = getSnakeOrderForRound(currentRound);
+  const picksThisRound = picks.filter(p => p.round === currentRound);
+  const picksThisRoundCount = picksThisRound.length;
 
   const queuedPlayers = queue
     .map(id => players.find(p => p.id === id))
@@ -504,7 +497,7 @@ export default function DraftPage() {
                   {draftComplete ? "✅" : `${String(Math.floor(timeLeft / 60)).padStart(2, "0")}:${String(timeLeft % 60).padStart(2, "0")}`}
                 </div>
                 <p className="text-xs text-gray-500 whitespace-nowrap">
-                  {draftComplete ? "Complete" : `Rd ${currentRound} · Pick ${getCurrentPickNumber()}/${totalPicks}`}
+                  {draftComplete ? "Complete" : `Rd ${currentRound} · Pick ${currentPickNumber}/${totalPicks}`}
                 </p>
               </>
             )}
@@ -529,7 +522,7 @@ export default function DraftPage() {
           </div>
         </div>
 
-        {/* Row 2: Status + Last Pick + Auto Pick */}
+        {/* Row 2: Status bar */}
         <div className={`px-2 sm:px-4 py-2 flex items-center justify-between gap-2 ${isMyTurn() && !draftComplete && !isPreDraft ? "bg-green-900" : ""}`}>
           <div className="flex-1 min-w-0">
             {isPreDraft ? (
@@ -557,7 +550,7 @@ export default function DraftPage() {
             )}
             {!isPreDraft && autoPickPlayer && !draftComplete && (
               <div className="text-right">
-                <p className="text-gray-600 uppercase tracking-wider text-xs mb-0.5">Auto Pick Would Be</p>
+                <p className="text-gray-600 uppercase tracking-wider text-xs mb-0.5">Auto Pick</p>
                 <p className="text-white font-bold">{autoPickPlayer.name}</p>
                 <p className="text-gray-500">{autoPickPlayer.position} · {autoPickPlayer.nfl_teams?.abbreviation}</p>
               </div>
@@ -571,32 +564,86 @@ export default function DraftPage() {
           </div>
         </div>
 
-        {/* Row 3: Team Strip */}
-        <div className="px-2 sm:px-4 py-2 overflow-x-auto border-t border-gray-800">
-          <div className="flex gap-3 sm:gap-4 min-w-max">
-            {members.map((member) => {
-              const memberPicks = picks.filter(p => p.user_id === member.user_id);
-              const isOnClock = currentPickOwner?.user_id === member.user_id && !draftComplete && !isPreDraft;
-              const isMe = member.user_id === user?.id;
-              const isOnline = onlineUserIds.includes(member.user_id);
-              return (
-                <div key={member.id} className={`flex flex-col items-center ${isOnClock || (isPreDraft && isOnline) ? "opacity-100" : "opacity-50"}`}>
-                  <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-sm font-black mb-1 relative ${
-                    isMe ? "bg-green-600" : "bg-gray-700"
-                  } ${isOnClock ? "ring-2 ring-yellow-400 ring-offset-1 ring-offset-gray-900" : ""}`}>
-                    {member.team_name.charAt(0).toUpperCase()}
-                    {isPreDraft && isOnline && (
-                      <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 rounded-full border border-gray-900" />
-                    )}
+        {/* Row 3: Snake Order Strip */}
+        <div className="border-t border-gray-800 px-2 sm:px-4 py-2 overflow-x-auto">
+          {isPreDraft ? (
+            // Pre-draft: show members in draft order with online indicators
+            <div className="flex items-center gap-1 sm:gap-2 min-w-max">
+              <p className="text-gray-600 text-xs mr-1 flex-shrink-0">Draft Order:</p>
+              {members.map((member, i) => {
+                const isMe = member.user_id === user?.id;
+                const isOnline = onlineUserIds.includes(member.user_id);
+                return (
+                  <div key={member.id} className="flex flex-col items-center">
+                    <div className={`relative w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-xs font-black ${
+                      isMe ? "bg-green-600" : "bg-gray-700"
+                    } ${!isOnline ? "opacity-40" : ""}`}>
+                      {member.team_name.charAt(0).toUpperCase()}
+                      {isOnline && (
+                        <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 rounded-full border border-gray-900" />
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-500 mt-0.5 font-mono">{i + 1}</p>
                   </div>
-                  <p className="text-xs text-gray-400 truncate max-w-14 sm:max-w-16 text-center">{member.team_name}</p>
-                  <p className="text-xs text-gray-600">
-                    {isPreDraft ? (member.user_id === league?.commissioner_user_id ? "Commish" : "") : `${memberPicks.length}/${TOTAL_PICKS_PER_TEAM}`}
-                  </p>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          ) : draftComplete ? (
+            <p className="text-gray-600 text-xs text-center py-1">Draft complete — all picks are in!</p>
+          ) : (
+            // Active draft: show snake order for current round
+            <div className="flex items-center gap-1 min-w-max">
+              {/* Round label + direction arrow */}
+              <div className="flex flex-col items-center mr-2 flex-shrink-0">
+                <p className="text-gray-500 text-xs font-bold">Rd {currentRound}</p>
+                <p className="text-gray-600 text-xs">{isEvenRound ? "←" : "→"}</p>
+              </div>
+
+              {snakeOrderThisRound.map((member, positionInRound) => {
+                const isOnClock = member.user_id === currentPickOwner?.user_id;
+                const isNext = member.user_id === nextPickOwner?.user_id && !isOnClock;
+                const isMe = member.user_id === user?.id;
+                const hasPicked = positionInRound < picksThisRoundCount;
+                const memberTotalPicks = picks.filter(p => p.user_id === member.user_id).length;
+
+                return (
+                  <div key={member.id} className="flex flex-col items-center">
+                    {/* Pick number above */}
+                    <p className={`text-xs font-mono mb-0.5 ${isOnClock ? "text-yellow-400 font-bold" : isNext ? "text-gray-400" : "text-gray-700"}`}>
+                      {(currentRound - 1) * members.length + positionInRound + 1}
+                    </p>
+
+                    {/* Avatar circle */}
+                    <div className={`relative w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-xs font-black transition-all ${
+                      isMe ? "bg-green-600" : "bg-gray-700"
+                    } ${isOnClock
+                        ? "ring-2 ring-yellow-400 ring-offset-1 ring-offset-gray-900 scale-110"
+                        : isNext
+                          ? "ring-1 ring-gray-500 ring-offset-1 ring-offset-gray-900"
+                          : hasPicked
+                            ? "opacity-30"
+                            : "opacity-70"
+                    }`}>
+                      {member.team_name.charAt(0).toUpperCase()}
+                      {isOnClock && (
+                        <span className="absolute -top-1 left-1/2 -translate-x-1/2 text-yellow-400 text-xs leading-none">▼</span>
+                      )}
+                    </div>
+
+                    {/* Team name below */}
+                    <p className={`text-xs mt-0.5 truncate max-w-12 sm:max-w-16 text-center ${
+                      isOnClock ? "text-yellow-300 font-bold" : isNext ? "text-gray-400" : "text-gray-600"
+                    }`}>
+                      {member.team_name.split(" ")[0]}
+                    </p>
+
+                    {/* Picks count */}
+                    <p className="text-xs text-gray-700 font-mono">{memberTotalPicks}</p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* MOBILE TAB SWITCHER */}
@@ -628,7 +675,7 @@ export default function DraftPage() {
         </div>
       </div>
 
-      {/* MAIN CONTENT — 3 panels on desktop, tabbed single panel on mobile */}
+      {/* MAIN CONTENT */}
       <div className="flex flex-1 overflow-hidden">
 
         {/* LEFT PANEL: My Roster */}
@@ -753,7 +800,6 @@ export default function DraftPage() {
 
           {/* Player Rows */}
           <div className="overflow-y-auto flex-1 pb-6">
-            {/* Desktop rows */}
             <div className="hidden md:block">
               {filteredPlayers.map((player, index) => {
                 const picked = isPickedAlready(player.id);
@@ -807,7 +853,6 @@ export default function DraftPage() {
               })}
             </div>
 
-            {/* Mobile rows */}
             <div className="md:hidden">
               {filteredPlayers.map((player, index) => {
                 const picked = isPickedAlready(player.id);
@@ -865,7 +910,6 @@ export default function DraftPage() {
         {/* RIGHT PANEL: Board + Chat */}
         <div className={`${mobileTab === "board" ? "flex" : "hidden"} md:flex w-full md:w-64 flex-shrink-0 bg-gray-900 md:border-l border-gray-800 flex-col`}>
 
-          {/* Right Panel Tabs */}
           <div className="flex border-b border-gray-800 flex-shrink-0">
             <button
               onClick={() => setRightPanel("board")}
@@ -885,7 +929,6 @@ export default function DraftPage() {
             </button>
           </div>
 
-          {/* Draft Board */}
           {rightPanel === "board" && (
             <div className="overflow-y-auto flex-1 px-2 py-2 pb-6">
               {isPreDraft ? (
@@ -916,7 +959,6 @@ export default function DraftPage() {
             </div>
           )}
 
-          {/* Chat */}
           {rightPanel === "chat" && (
             <div className="flex flex-col flex-1 overflow-hidden">
               <div className="overflow-y-auto flex-1 px-3 py-2 pb-2">
