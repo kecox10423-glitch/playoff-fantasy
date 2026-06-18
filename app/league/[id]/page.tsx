@@ -198,7 +198,7 @@ export default function LeaguePage() {
 
   async function handleRemoveMember(targetUserId: string) {
     setRemovingMemberId(targetUserId);
-    const res = await fetch("/api/commissioner/remove-member", {
+    const res = await fetch("/api/remove-member", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

@@ -43,7 +43,7 @@ export default function AdminLeaguesPage() {
   }, []);
 
   async function loadMembers(leagueId: string) {
-    if (leagueMembers[leagueId]) return; // already loaded
+    if (leagueMembers[leagueId]) return;
     const { data } = await supabase
       .from("league_members")
       .select("*")
@@ -94,7 +94,7 @@ export default function AdminLeaguesPage() {
 
   async function handleRemoveMember(leagueId: string, targetUserId: string) {
     setRemovingMemberId(targetUserId);
-    const res = await fetch("/api/commissioner/remove-member", {
+    const res = await fetch("/api/remove-member", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
