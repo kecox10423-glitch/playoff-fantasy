@@ -10,7 +10,7 @@ const supabase = createClient(
 
 const ROSTER_SLOTS = { QB: 2, RB: 3, WR: 4, TE: 2, K: 2, DST: 2 };
 const TOTAL_PICKS_PER_TEAM = 15;
-const TIMER_SECONDS = 90;
+const TIMER_SECONDS = 60;
 
 function parseUTCTimestamp(raw: string): Date {
   if (raw.endsWith("Z") || raw.includes("+")) return new Date(raw);
