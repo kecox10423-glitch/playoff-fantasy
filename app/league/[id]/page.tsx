@@ -68,6 +68,8 @@ export default function LeaguePage() {
   const [editingTeamName, setEditingTeamName] = useState(false);
   const [teamNameInput, setTeamNameInput] = useState("");
   const [savingTeamName, setSavingTeamName] = useState(false);
+  const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const params = useParams();
@@ -88,7 +90,6 @@ export default function LeaguePage() {
       setLeague(leagueData);
       setMembers(membersData || []);
 
-      // Pre-fill current user's color and team name
       const myMember = (membersData || []).find((m: any) => m.user_id === user.id);
       if (myMember?.avatar_color) setSelectedColor(myMember.avatar_color);
       if (myMember?.team_name) setTeamNameInput(myMember.team_name);
@@ -195,6 +196,29 @@ export default function LeaguePage() {
     setEditingTeamName(false);
   }
 
+  async function handleRemoveMember(targetUserId: string) {
+    setRemovingMemberId(targetUserId);
+    const res = await fetch("/api/commissioner/remove-member", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        leagueId,
+        requestingUserId: user.id,
+        targetUserId,
+      }),
+    });
+
+    if (res.ok) {
+      setMembers(prev => prev.filter(m => m.user_id !== targetUserId));
+    } else {
+      const data = await res.json();
+      alert(`Failed to remove member: ${data.error}`);
+    }
+
+    setRemovingMemberId(null);
+    setConfirmRemoveId(null);
+  }
+
   if (loading) return (
     <main className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
       <p>Loading...</p>
@@ -208,6 +232,7 @@ export default function LeaguePage() {
   );
 
   const isCommissioner = user?.id === league.commissioner_user_id;
+  const isDraftStarted = league.draft_status === "IN_PROGRESS" || league.draft_status === "COMPLETED";
   const spotsLeft = league.num_teams - members.length;
   const draftComplete = league.draft_status === "COMPLETED";
   const conferenceEnabled = league.conference_enabled;
@@ -242,7 +267,6 @@ export default function LeaguePage() {
           <div className="bg-gray-900 rounded-xl p-6 w-full max-w-sm border border-gray-700">
             <h2 className="font-black text-lg mb-4">Edit Your Avatar</h2>
 
-            {/* Preview */}
             <div className="flex justify-center mb-5">
               {avatarPreview ? (
                 <img src={avatarPreview} className="w-20 h-20 rounded-full object-cover" />
@@ -251,7 +275,6 @@ export default function LeaguePage() {
               )}
             </div>
 
-            {/* Upload */}
             <input
               ref={fileInputRef}
               type="file"
@@ -266,7 +289,6 @@ export default function LeaguePage() {
               📁 Upload Image
             </button>
 
-            {/* Color picker */}
             <p className="text-gray-400 text-xs mb-2">Default color (if no image):</p>
             <div className="flex flex-wrap gap-2 mb-5">
               {AVATAR_COLORS.map(color => (
@@ -281,7 +303,6 @@ export default function LeaguePage() {
               ))}
             </div>
 
-            {/* Actions */}
             <div className="flex gap-2">
               <button
                 onClick={handleSaveAvatar}
@@ -340,7 +361,6 @@ export default function LeaguePage() {
             </div>
           </div>
 
-          {/* Stats Row */}
           <div className="grid grid-cols-3 gap-4 mb-6">
             <div className="text-center">
               <p className="text-2xl font-black text-white">{members.length}/{league.num_teams}</p>
@@ -356,7 +376,6 @@ export default function LeaguePage() {
             </div>
           </div>
 
-          {/* Draft Room Button */}
           <button
             onClick={openDraftRoom}
             className="w-full bg-green-600 hover:bg-green-500 text-white font-black py-3 rounded-lg text-lg transition-colors"
@@ -374,6 +393,9 @@ export default function LeaguePage() {
             {members.map((member, i) => {
               const isMe = member.user_id === user?.id;
               const isEditingThisName = isMe && editingTeamName;
+              const isThisCommissioner = member.user_id === league.commissioner_user_id;
+              const isConfirmingRemove = confirmRemoveId === member.user_id;
+              const isRemoving = removingMemberId === member.user_id;
 
               return (
                 <div key={member.id} className="flex items-center gap-3 py-2.5 border-b border-gray-800 last:border-0">
@@ -435,13 +457,42 @@ export default function LeaguePage() {
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     {getConferenceBadge(member)}
-                    {member.user_id === league.commissioner_user_id && (
+                    {isThisCommissioner && (
                       <span className="text-xs bg-green-900 text-green-400 w-5 h-5 sm:w-auto sm:h-auto sm:px-2 sm:py-0.5 rounded-full flex items-center justify-center font-bold">
                         <span className="sm:hidden">C</span>
                         <span className="hidden sm:inline">Commissioner</span>
                       </span>
                     )}
                     <span className="hidden sm:inline text-xs text-gray-600">#{i + 1}</span>
+
+                    {/* Remove member — commissioner only, not themselves, pre-draft only */}
+                    {isCommissioner && !isMe && !isThisCommissioner && !isDraftStarted && (
+                      isConfirmingRemove ? (
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => handleRemoveMember(member.user_id)}
+                            disabled={isRemoving}
+                            className="text-xs bg-red-700 hover:bg-red-600 disabled:bg-gray-700 text-white font-bold px-2 py-1 rounded"
+                          >
+                            {isRemoving ? "..." : "Confirm"}
+                          </button>
+                          <button
+                            onClick={() => setConfirmRemoveId(null)}
+                            className="text-xs bg-gray-700 hover:bg-gray-600 text-white font-bold px-2 py-1 rounded"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setConfirmRemoveId(member.user_id)}
+                          className="text-xs text-gray-600 hover:text-red-400 font-bold px-1.5 py-1 rounded hover:bg-red-950 transition-colors"
+                          title="Remove from league"
+                        >
+                          ✕
+                        </button>
+                      )
+                    )}
                   </div>
                 </div>
               );
