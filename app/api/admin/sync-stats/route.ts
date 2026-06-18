@@ -22,15 +22,6 @@ function normalizeName(name: string): string {
     .trim();
 }
 
-function pointsAllowedBonus(pts: number): number {
-  if (pts === 0)        return 10;
-  if (pts <= 6)         return 7;
-  if (pts <= 13)        return 4;
-  if (pts <= 20)        return 1;
-  if (pts <= 27)        return 0;
-  return -1;
-}
-
 export async function POST(req: NextRequest) {
   try {
     const { userId } = await req.json();
@@ -47,7 +38,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No players found" }, { status: 400 });
     }
 
-    // Fetch all 18 weeks of 2025 season stats from Sleeper
     const weeklyStats: { [playerId: string]: any } = {};
 
     for (let week = 1; week <= 18; week++) {
@@ -68,9 +58,11 @@ export async function POST(req: NextRequest) {
               receptions: 0, rec_yards: 0, rec_tds: 0, rec_first_downs: 0,
               fg_made: 0, fg_attempts: 0, xp_made: 0, pat_attempts: 0,
               fg_0_39: 0, fg_40_49: 0, fg_50_plus: 0,
+              // DST display stats
               dst_sacks: 0, dst_ints: 0, dst_fumbles_rec: 0,
               dst_tds: 0, dst_points_allowed: 0, dst_tackles: 0, dst_safety: 0,
-              dst_pa_bonus: 0,
+              // DST scoring — Sleeper calculates this for us
+              dst_fantasy_points: 0,
               fumbles_lost: 0,
             };
           }
@@ -105,19 +97,17 @@ export async function POST(req: NextRequest) {
           weeklyStats[sleeperId].fg_40_49     += s.fgm_40_49 || 0;
           weeklyStats[sleeperId].fg_50_plus   += s.fgm_50p   || 0;
 
-          // DST
+          // DST display stats (tackles shown in UI but not scored)
           weeklyStats[sleeperId].dst_sacks       += s.sack    || 0;
           weeklyStats[sleeperId].dst_ints        += s.int     || 0;
           weeklyStats[sleeperId].dst_fumbles_rec += s.fum_rec || 0;
-          weeklyStats[sleeperId].dst_tds         += s.td      || 0;
           weeklyStats[sleeperId].dst_tackles     += s.tkl     || 0;
           weeklyStats[sleeperId].dst_safety      += s.safe    || 0;
           weeklyStats[sleeperId].dst_points_allowed += s.pts_allow || 0;
 
-          // Points allowed sliding scale applied per game
-          if (s.pts_allow !== undefined && s.pts_allow !== null) {
-            weeklyStats[sleeperId].dst_pa_bonus += pointsAllowedBonus(s.pts_allow);
-          }
+          // DST fantasy points — use Sleeper's pre-calculated value (pts_std)
+          // This already includes sacks, ints, TDs, safeties, fumbles, points allowed
+          weeklyStats[sleeperId].dst_fantasy_points += s.pts_std || 0;
 
           // Misc
           weeklyStats[sleeperId].fumbles_lost += s.fum_lost || 0;
@@ -127,7 +117,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Fetch Sleeper player list to build name -> sleeper_id map
     const sleeperPlayersRes = await fetch("https://api.sleeper.app/v1/players/nfl");
     const sleeperPlayers = await sleeperPlayersRes.json();
 
@@ -192,18 +181,12 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
-      // Calculate fantasy points (PPR)
       let fantasyPoints = 0;
 
       if (player.position === "DST") {
-        // Tackles are display-only — not scored
-        fantasyPoints =
-          (stats.dst_sacks       * 1) +
-          (stats.dst_ints        * 2) +
-          (stats.dst_fumbles_rec * 2) +
-          (stats.dst_tds         * 6) +
-          (stats.dst_safety      * 2) +
-          stats.dst_pa_bonus;
+        // Use Sleeper's pre-calculated DST fantasy points — already accounts for
+        // sacks, ints, fumble recoveries, TDs, safeties, and points allowed scale
+        fantasyPoints = stats.dst_fantasy_points;
       } else {
         fantasyPoints =
           (stats.pass_yards / 20) +
@@ -249,7 +232,7 @@ export async function POST(req: NextRequest) {
           dst_sacks:          stats.dst_sacks,
           dst_ints:           stats.dst_ints,
           dst_fumbles_rec:    stats.dst_fumbles_rec,
-          dst_tds:            stats.dst_tds,
+          dst_tds:            0,
           dst_points_allowed: stats.dst_points_allowed,
           dst_tackles:        stats.dst_tackles,
           dst_safety:         stats.dst_safety,
