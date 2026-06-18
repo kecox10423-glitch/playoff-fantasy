@@ -518,7 +518,7 @@ export default function DraftPage() {
   });
 
   // Grid template: RK + Avatar + Player name + stat cols + POS + ACTION
-  const statColWidth = "3.5rem";
+  const statColWidth = "3rem";
   const gridCols = `2rem 2.5rem 1fr ${statCols.map(() => statColWidth).join(" ")} 3.5rem 6rem`;
 
   if (loading) return (
@@ -794,7 +794,7 @@ export default function DraftPage() {
 
           {/* Column Headers — desktop only, scrollable stat cols */}
           <div className="hidden md:block border-b border-gray-800 bg-gray-900 flex-shrink-0 overflow-x-auto">
-            <div className="grid text-xs text-gray-500 font-bold uppercase px-3 py-1.5 min-w-max"
+            <div className="grid text-xs text-gray-500 font-bold uppercase px-3 py-1.5 min-w-max items-center"
               style={{ gridTemplateColumns: gridCols }}>
               <span className="text-gray-600">RK</span>
               <span></span>
@@ -828,7 +828,7 @@ export default function DraftPage() {
                       <p className="text-xs text-gray-500">{player.nfl_teams?.abbreviation} · Seed {player.nfl_teams?.seed || "—"}</p>
                     </div>
                     {statCols.map(col => (
-                      <span key={col.key} className={`text-xs text-right font-mono ${col.field === "fantasy_points" ? "text-blue-400 font-bold" : "text-gray-300"}`}>
+                      <span key={col.key} className={`text-xs text-right font-mono tabular-nums ${col.field === "fantasy_points" ? "text-blue-400 font-bold" : "text-gray-300"}`}>
                         {player[col.field] != null && player[col.field] !== 0
                           ? (col.field === "fantasy_points" ? parseFloat(player[col.field]).toFixed(1) : Math.round(player[col.field]))
                           : "—"}
