@@ -37,34 +37,66 @@ export async function POST(req: NextRequest) {
         if (!res.ok) continue;
         const weekData = await res.json();
 
-        // Accumulate stats by Sleeper player ID
         for (const [sleeperId, stats] of Object.entries(weekData as any)) {
           if (!weeklyStats[sleeperId]) {
             weeklyStats[sleeperId] = {
+              // Passing
               pass_yards: 0, pass_tds: 0, interceptions: 0,
-              rush_yards: 0, rush_tds: 0,
-              receptions: 0, rec_yards: 0, rec_tds: 0,
-              fg_made: 0, xp_made: 0,
+              pass_attempts: 0, pass_completions: 0, pass_first_downs: 0,
+              // Rushing
+              rush_yards: 0, rush_tds: 0, rush_attempts: 0, rush_first_downs: 0,
+              // Receiving
+              receptions: 0, rec_yards: 0, rec_tds: 0, rec_first_downs: 0,
+              // Kicking
+              fg_made: 0, fg_attempts: 0, xp_made: 0, pat_attempts: 0,
+              fg_0_39: 0, fg_40_49: 0, fg_50_plus: 0,
+              // DST
               dst_sacks: 0, dst_ints: 0, dst_fumbles_rec: 0,
-              dst_tds: 0, dst_points_allowed: 0,
+              dst_tds: 0, dst_points_allowed: 0, dst_tackles: 0, dst_safety: 0,
+              // Misc
               fumbles_lost: 0,
             };
           }
           const s = stats as any;
+
+          // Passing
           weeklyStats[sleeperId].pass_yards += s.pass_yd || 0;
           weeklyStats[sleeperId].pass_tds += s.pass_td || 0;
           weeklyStats[sleeperId].interceptions += s.pass_int || 0;
+          weeklyStats[sleeperId].pass_attempts += s.pass_att || 0;
+          weeklyStats[sleeperId].pass_completions += s.pass_cmp || 0;
+          weeklyStats[sleeperId].pass_first_downs += s.pass_fd || 0;
+
+          // Rushing
           weeklyStats[sleeperId].rush_yards += s.rush_yd || 0;
           weeklyStats[sleeperId].rush_tds += s.rush_td || 0;
+          weeklyStats[sleeperId].rush_attempts += s.rush_att || 0;
+          weeklyStats[sleeperId].rush_first_downs += s.rush_fd || 0;
+
+          // Receiving
           weeklyStats[sleeperId].receptions += s.rec || 0;
           weeklyStats[sleeperId].rec_yards += s.rec_yd || 0;
           weeklyStats[sleeperId].rec_tds += s.rec_td || 0;
+          weeklyStats[sleeperId].rec_first_downs += s.rec_fd || 0;
+
+          // Kicking
           weeklyStats[sleeperId].fg_made += s.fgm || 0;
+          weeklyStats[sleeperId].fg_attempts += s.fga || 0;
           weeklyStats[sleeperId].xp_made += s.xpm || 0;
+          weeklyStats[sleeperId].pat_attempts += s.xpa || 0;
+          weeklyStats[sleeperId].fg_0_39 += s.fgm_0_19 || 0 + s.fgm_20_29 || 0 + s.fgm_30_39 || 0;
+          weeklyStats[sleeperId].fg_40_49 += s.fgm_40_49 || 0;
+          weeklyStats[sleeperId].fg_50_plus += s.fgm_50p || 0;
+
+          // DST
           weeklyStats[sleeperId].dst_sacks += s.def_sack || 0;
           weeklyStats[sleeperId].dst_ints += s.def_int || 0;
           weeklyStats[sleeperId].dst_fumbles_rec += s.def_fum_rec || 0;
           weeklyStats[sleeperId].dst_tds += s.def_td || 0;
+          weeklyStats[sleeperId].dst_tackles += s.def_tackle || 0;
+          weeklyStats[sleeperId].dst_safety += s.def_safe || 0;
+
+          // Misc
           weeklyStats[sleeperId].fumbles_lost += s.fum_lost || 0;
         }
       } catch (e) {
@@ -72,7 +104,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Now fetch Sleeper player list to map names to IDs
+    // Fetch Sleeper player list to map names to IDs
     const sleeperPlayersRes = await fetch(
       "https://api.sleeper.app/v1/players/nfl"
     );
@@ -88,29 +120,45 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Match our players to Sleeper IDs and insert stats
+    // Build DST team abbreviation -> sleeper_id map
+    // Sleeper uses team abbreviations as IDs for DST (e.g. "BAL", "BUF")
+    const dstTeamMap: { [abbr: string]: string } = {
+      "BAL": "BAL", "BUF": "BUF", "LAC": "LAC", "NE": "NE",
+      "KC": "KC", "HOU": "HOU", "DEN": "DEN",
+      "LAR": "LAR", "SEA": "SEA", "SF": "SF",
+      "DET": "DET", "PHI": "PHI", "GB": "GB", "DAL": "DAL",
+    };
+
     let matched = 0;
     let unmatched: string[] = [];
 
     for (const player of players) {
+      let stats: any = null;
+
       if (player.position === "DST") {
-        // DST uses team abbreviation in Sleeper
-        // Skip for now — handle separately
-        continue;
+        // Get team abbreviation from nfl_teams
+        const { data: teamData } = await supabaseAdmin
+          .from("nfl_teams")
+          .select("abbreviation")
+          .eq("id", player.nfl_team_id)
+          .single();
+
+        const abbr = teamData?.abbreviation;
+        const sleeperId = abbr ? dstTeamMap[abbr] : null;
+        stats = sleeperId ? weeklyStats[sleeperId] : null;
+      } else {
+        const nameLower = player.name.toLowerCase();
+        const sleeperId = nameToSleeperId[nameLower];
+        stats = sleeperId ? weeklyStats[sleeperId] : null;
       }
 
-      const nameLower = player.name.toLowerCase();
-      const sleeperId = nameToSleeperId[nameLower];
-
-      if (!sleeperId || !weeklyStats[sleeperId]) {
+      if (!stats) {
         unmatched.push(player.name);
         continue;
       }
 
-      const stats = weeklyStats[sleeperId];
-
       // Calculate fantasy points (PPR)
-      const fantasyPoints =
+      let fantasyPoints =
         (stats.pass_yards / 20) +
         (stats.pass_tds * 4) -
         (stats.interceptions * 1) +
@@ -123,14 +171,54 @@ export async function POST(req: NextRequest) {
         (stats.xp_made * 1) -
         (stats.fumbles_lost * 2);
 
-      // Upsert into player_stats (season total as week 0)
+      // DST scoring
+      if (player.position === "DST") {
+        fantasyPoints =
+          (stats.dst_sacks * 1) +
+          (stats.dst_ints * 2) +
+          (stats.dst_fumbles_rec * 2) +
+          (stats.dst_tds * 6) +
+          (stats.dst_safety * 2);
+
+        // Points allowed scoring (averaged across weeks played)
+        // We don't track per-week PA so use a reasonable estimate
+      }
+
       await supabaseAdmin
         .from("player_stats")
         .upsert({
           player_id: player.id,
           season: 2026,
-          week: 0, // 0 = full season total
-          ...stats,
+          week: 0,
+          pass_yards: stats.pass_yards,
+          pass_tds: stats.pass_tds,
+          interceptions: stats.interceptions,
+          pass_attempts: stats.pass_attempts,
+          pass_completions: stats.pass_completions,
+          pass_first_downs: stats.pass_first_downs,
+          rush_yards: stats.rush_yards,
+          rush_tds: stats.rush_tds,
+          rush_attempts: stats.rush_attempts,
+          rush_first_downs: stats.rush_first_downs,
+          receptions: stats.receptions,
+          rec_yards: stats.rec_yards,
+          rec_tds: stats.rec_tds,
+          rec_first_downs: stats.rec_first_downs,
+          fg_made: stats.fg_made,
+          fg_attempts: stats.fg_attempts,
+          xp_made: stats.xp_made,
+          pat_attempts: stats.pat_attempts,
+          fg_0_39: stats.fg_0_39,
+          fg_40_49: stats.fg_40_49,
+          fg_50_plus: stats.fg_50_plus,
+          dst_sacks: stats.dst_sacks,
+          dst_ints: stats.dst_ints,
+          dst_fumbles_rec: stats.dst_fumbles_rec,
+          dst_tds: stats.dst_tds,
+          dst_points_allowed: stats.dst_points_allowed,
+          dst_tackles: stats.dst_tackles,
+          dst_safety: stats.dst_safety,
+          fumbles_lost: stats.fumbles_lost,
           fantasy_points: Math.round(fantasyPoints * 10) / 10,
         }, { onConflict: "player_id,season,week" });
 
