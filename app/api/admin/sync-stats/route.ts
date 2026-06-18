@@ -8,7 +8,6 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-// Hardcoded Sleeper ID overrides for players that fail name matching.
 const SLEEPER_ID_OVERRIDES: { [nameLower: string]: string } = {
   "lamar jackson": "4881",
   "devonta smith": "7525",
@@ -21,6 +20,15 @@ function normalizeName(name: string): string {
     .replace(/[^a-z\s]/g, "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function pointsAllowedBonus(pts: number): number {
+  if (pts === 0)        return 10;
+  if (pts <= 6)         return 7;
+  if (pts <= 13)        return 4;
+  if (pts <= 20)        return 1;
+  if (pts <= 27)        return 0;
+  return -1;
 }
 
 export async function POST(req: NextRequest) {
@@ -62,6 +70,7 @@ export async function POST(req: NextRequest) {
               fg_0_39: 0, fg_40_49: 0, fg_50_plus: 0,
               dst_sacks: 0, dst_ints: 0, dst_fumbles_rec: 0,
               dst_tds: 0, dst_points_allowed: 0, dst_tackles: 0, dst_safety: 0,
+              dst_pa_bonus: 0,
               fumbles_lost: 0,
             };
           }
@@ -96,7 +105,7 @@ export async function POST(req: NextRequest) {
           weeklyStats[sleeperId].fg_40_49     += s.fgm_40_49 || 0;
           weeklyStats[sleeperId].fg_50_plus   += s.fgm_50p   || 0;
 
-          // DST — correct Sleeper field names (confirmed from API)
+          // DST
           weeklyStats[sleeperId].dst_sacks       += s.sack    || 0;
           weeklyStats[sleeperId].dst_ints        += s.int     || 0;
           weeklyStats[sleeperId].dst_fumbles_rec += s.fum_rec || 0;
@@ -104,6 +113,11 @@ export async function POST(req: NextRequest) {
           weeklyStats[sleeperId].dst_tackles     += s.tkl     || 0;
           weeklyStats[sleeperId].dst_safety      += s.safe    || 0;
           weeklyStats[sleeperId].dst_points_allowed += s.pts_allow || 0;
+
+          // Points allowed sliding scale applied per game
+          if (s.pts_allow !== undefined && s.pts_allow !== null) {
+            weeklyStats[sleeperId].dst_pa_bonus += pointsAllowedBonus(s.pts_allow);
+          }
 
           // Misc
           weeklyStats[sleeperId].fumbles_lost += s.fum_lost || 0;
@@ -156,20 +170,13 @@ export async function POST(req: NextRequest) {
         const sleeperId = abbr ? dstTeamMap[abbr] : null;
         stats = sleeperId ? weeklyStats[sleeperId] : null;
       } else {
-        // Try 0: hardcoded override
         const nameLower = player.name.toLowerCase();
         let sleeperId = SLEEPER_ID_OVERRIDES[nameLower];
-
-        // Try 1: exact lowercase match
         if (!sleeperId) sleeperId = nameToSleeperId[nameLower];
-
-        // Try 2: normalized match (strips Jr./Sr./suffixes)
         if (!sleeperId) {
           const normalized = normalizeName(player.name);
           sleeperId = normalizedToSleeperId[normalized];
         }
-
-        // Try 3: first + last word only (handles middle initials)
         if (!sleeperId) {
           const parts = normalizeName(player.name).split(" ");
           if (parts.length > 2) {
@@ -177,7 +184,6 @@ export async function POST(req: NextRequest) {
             sleeperId = normalizedToSleeperId[firstLast];
           }
         }
-
         stats = sleeperId ? weeklyStats[sleeperId] : null;
       }
 
@@ -190,12 +196,14 @@ export async function POST(req: NextRequest) {
       let fantasyPoints = 0;
 
       if (player.position === "DST") {
+        // Tackles are display-only — not scored
         fantasyPoints =
           (stats.dst_sacks       * 1) +
           (stats.dst_ints        * 2) +
           (stats.dst_fumbles_rec * 2) +
           (stats.dst_tds         * 6) +
-          (stats.dst_safety      * 2);
+          (stats.dst_safety      * 2) +
+          stats.dst_pa_bonus;
       } else {
         fantasyPoints =
           (stats.pass_yards / 20) +
