@@ -27,15 +27,35 @@ export default function ResetPassword() {
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [validSession, setValidSession] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
-    // Supabase puts the token in the URL hash — this picks it up automatically
-    supabase.auth.onAuthStateChange((event) => {
-      if (event === "PASSWORD_RECOVERY") {
-        setValidSession(true);
+    // Supabase puts access_token and refresh_token in the URL hash.
+    // We need to manually exchange them for a session.
+    async function exchangeToken() {
+      const hash = window.location.hash;
+      const params = new URLSearchParams(hash.replace("#", "?"));
+      const accessToken = params.get("access_token");
+      const refreshToken = params.get("refresh_token");
+
+      if (accessToken && refreshToken) {
+        const { error } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+        if (!error) {
+          setValidSession(true);
+        } else {
+          setError("Invalid or expired reset link. Please request a new one.");
+        }
+      } else {
+        setError("Invalid or expired reset link. Please request a new one.");
       }
-    });
+      setCheckingSession(false);
+    }
+
+    exchangeToken();
   }, []);
 
   async function handleReset() {
@@ -62,15 +82,19 @@ export default function ResetPassword() {
       <h1 className="text-3xl font-bold mt-4 mb-8">Set New Password</h1>
 
       <div className="w-full max-w-sm flex flex-col gap-4">
-        {done ? (
+        {checkingSession ? (
+          <p className="text-gray-400 text-center">Verifying reset link...</p>
+        ) : done ? (
           <div className="bg-green-900 border border-green-700 rounded-lg p-4 text-center">
             <p className="text-green-300 font-bold mb-1">Password updated!</p>
             <p className="text-green-400 text-sm">Redirecting to your dashboard...</p>
           </div>
         ) : !validSession ? (
-          <div className="bg-yellow-900 border border-yellow-700 rounded-lg p-4 text-center">
-            <p className="text-yellow-300 text-sm">Waiting for reset link verification...</p>
-            <p className="text-yellow-400 text-xs mt-2">Make sure you clicked the link from your email.</p>
+          <div className="bg-red-900 border border-red-700 rounded-lg p-4 text-center">
+            <p className="text-red-300 text-sm">{error}</p>
+            <a href="/login" className="mt-3 inline-block text-green-400 text-sm underline">
+              Back to log in
+            </a>
           </div>
         ) : (
           <>
