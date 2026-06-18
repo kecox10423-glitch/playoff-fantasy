@@ -17,7 +17,6 @@ function parseUTCTimestamp(raw: string): Date {
   return new Date(raw.replace(" ", "T") + "Z");
 }
 
-// Audio helpers using Web Audio API
 function createBeep(frequency: number, duration: number, volume: number = 0.3) {
   try {
     const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -40,13 +39,8 @@ function playOnClockAlert() {
   setTimeout(() => createBeep(660, 0.3, 0.5), 360);
 }
 
-function playUrgentBeep() {
-  createBeep(880, 0.2, 0.4);
-}
-
-function playTickBeep() {
-  createBeep(660, 0.08, 0.25);
-}
+function playUrgentBeep() { createBeep(880, 0.2, 0.4); }
+function playTickBeep() { createBeep(660, 0.08, 0.25); }
 
 function PFFLLogo({ size = 28 }: { size?: number }) {
   return (
@@ -80,7 +74,6 @@ function getPositionBadge(position: string) {
   }
 }
 
-// Position-specific stat column definitions
 type StatCol = { key: string; label: string; field: string };
 
 const STAT_COLS: { [pos: string]: StatCol[] } = {
@@ -173,6 +166,7 @@ export default function DraftPage() {
   const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
   const [startingDraft, setStartingDraft] = useState(false);
   const [autoPickEnabled, setAutoPickEnabled] = useState(false);
+  const [rosterEmailSent, setRosterEmailSent] = useState(false);
   const timerRef = useRef<any>(null);
   const countdownRef = useRef<any>(null);
   const picksRef = useRef<any[]>([]);
@@ -216,11 +210,9 @@ export default function DraftPage() {
       const { data: chatData } = await supabase
         .from("draft_chat_messages").select("*").eq("league_id", leagueId).order("created_at");
 
-      // Build stats lookup map keyed by player_id
       const statsMap: { [playerId: number]: any } = {};
       (statsData || []).forEach((s: any) => { statsMap[s.player_id] = s; });
 
-      // Merge all stats onto players
       const playersWithStats = (playersData || []).map((p: any) => ({
         ...p,
         ...(statsMap[p.id] || {}),
@@ -293,6 +285,22 @@ export default function DraftPage() {
     };
   }, []);
 
+  // Send roster emails when draft completes — commissioner only, fires once
+  useEffect(() => {
+    if (loading || !league || !user) return;
+    const totalPicks = membersRef.current.length * TOTAL_PICKS_PER_TEAM;
+    const isDraftComplete = picks.length >= totalPicks && totalPicks > 0;
+    const isCommissioner = user.id === league.commissioner_user_id;
+    if (isDraftComplete && isCommissioner && !rosterEmailSent) {
+      setRosterEmailSent(true);
+      fetch("/api/draft/send-roster-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leagueId, commissionerUserId: user.id }),
+      }).catch(err => console.error("Roster email failed:", err));
+    }
+  }, [picks, loading, league, user]);
+
   // Pick timer + audio alerts
   useEffect(() => {
     if (loading) return;
@@ -309,7 +317,7 @@ export default function DraftPage() {
     return () => clearInterval(timerRef.current);
   }, [picks, loading, members, league?.draft_status]);
 
-  // On-clock alert — fire when it becomes my turn
+  // On-clock alert
   useEffect(() => {
     if (loading || league?.draft_status !== "IN_PROGRESS") return;
     const myTurn = getPickOwner(picks.length + 1)?.user_id === user?.id;
@@ -514,8 +522,6 @@ export default function DraftPage() {
   const statColWidth = "3rem";
   const gridCols = `2rem 2.5rem 1fr ${statCols.map(() => statColWidth).join(" ")} 3.5rem 6rem`;
 
-  // Helper to render a stat value — show "—" only when the value is null/undefined,
-  // not when it's a legitimate 0 (e.g. DST with 0 sacks in a game)
   function renderStat(player: any, col: StatCol): string {
     const val = player[col.field];
     if (val == null) return "—";
@@ -614,7 +620,7 @@ export default function DraftPage() {
                 {isCommissioner ? ` or you hit Start.` : `.`}
               </p>
             ) : draftComplete ? (
-              <p className="font-bold text-green-400 text-sm">🏆 Draft Complete!</p>
+              <p className="font-bold text-green-400 text-sm">🏆 Draft Complete! Roster emails sent to all teams.</p>
             ) : isMyTurn() ? (
               <p className="font-black text-green-300 text-sm sm:text-lg">⚡ You're on the clock!</p>
             ) : (
@@ -814,7 +820,6 @@ export default function DraftPage() {
 
           {/* Player Rows */}
           <div className="overflow-y-auto flex-1 pb-6">
-            {/* Desktop */}
             <div className="hidden md:block overflow-x-auto">
               {filteredPlayers.map((player, index) => {
                 const picked = isPickedAlready(player.id);
@@ -860,7 +865,6 @@ export default function DraftPage() {
               })}
             </div>
 
-            {/* Mobile */}
             <div className="md:hidden">
               {filteredPlayers.map((player, index) => {
                 const picked = isPickedAlready(player.id);
