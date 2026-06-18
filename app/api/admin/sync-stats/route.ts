@@ -8,7 +8,12 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-// Normalize a name for matching: lowercase, strip punctuation and suffixes
+// Hardcoded Sleeper ID overrides for players that fail name matching.
+const SLEEPER_ID_OVERRIDES: { [nameLower: string]: string } = {
+  "lamar jackson": "4881",
+  "devonta smith": "7525",
+};
+
 function normalizeName(name: string): string {
   return name
     .toLowerCase()
@@ -25,7 +30,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Not authorized" }, { status: 403 });
     }
 
-    // Get all players from our database
     const { data: players } = await supabaseAdmin
       .from("players")
       .select("*")
@@ -35,9 +39,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No players found" }, { status: 400 });
     }
 
-    // -----------------------------------------------------------------------
-    // Step 1: Fetch all 18 weeks of 2025 season stats from Sleeper
-    // -----------------------------------------------------------------------
+    // Fetch all 18 weeks of 2025 season stats from Sleeper
     const weeklyStats: { [playerId: string]: any } = {};
 
     for (let week = 1; week <= 18; week++) {
@@ -58,13 +60,9 @@ export async function POST(req: NextRequest) {
               receptions: 0, rec_yards: 0, rec_tds: 0, rec_first_downs: 0,
               fg_made: 0, fg_attempts: 0, xp_made: 0, pat_attempts: 0,
               fg_0_39: 0, fg_40_49: 0, fg_50_plus: 0,
-              // DST
               dst_sacks: 0, dst_ints: 0, dst_fumbles_rec: 0,
               dst_tds: 0, dst_points_allowed: 0, dst_tackles: 0, dst_safety: 0,
-              // Misc
               fumbles_lost: 0,
-              // Track weeks played for DST points-allowed averaging
-              dst_weeks: 0,
             };
           }
           const s = stats as any;
@@ -94,26 +92,18 @@ export async function POST(req: NextRequest) {
           weeklyStats[sleeperId].fg_attempts  += s.fga  || 0;
           weeklyStats[sleeperId].xp_made      += s.xpm  || 0;
           weeklyStats[sleeperId].pat_attempts += s.xpa  || 0;
-          // FIX: wrap each term in parens to avoid operator precedence bug
-          weeklyStats[sleeperId].fg_0_39   += (s.fgm_0_19  || 0) + (s.fgm_20_29 || 0) + (s.fgm_30_39 || 0);
-          weeklyStats[sleeperId].fg_40_49  += s.fgm_40_49 || 0;
-          weeklyStats[sleeperId].fg_50_plus += s.fgm_50p  || 0;
+          weeklyStats[sleeperId].fg_0_39      += (s.fgm_0_19  || 0) + (s.fgm_20_29 || 0) + (s.fgm_30_39 || 0);
+          weeklyStats[sleeperId].fg_40_49     += s.fgm_40_49 || 0;
+          weeklyStats[sleeperId].fg_50_plus   += s.fgm_50p   || 0;
 
-          // DST — FIX: correct Sleeper field names
-          // def_sack, def_int, def_fum_rec, def_td, def_safe are correct
-          // dst_points_allowed maps to pts_allow in Sleeper
-          // dst_tackles maps to def_tkl in Sleeper
-          weeklyStats[sleeperId].dst_sacks       += s.def_sack    || 0;
-          weeklyStats[sleeperId].dst_ints        += s.def_int     || 0;
-          weeklyStats[sleeperId].dst_fumbles_rec += s.def_fum_rec || 0;
-          weeklyStats[sleeperId].dst_tds         += (s.def_td || 0) + (s.def_st_td || 0);
-          weeklyStats[sleeperId].dst_tackles     += s.def_tkl     || 0;
-          weeklyStats[sleeperId].dst_safety      += s.def_safe    || 0;
-          // FIX: pts_allow is the correct Sleeper field for points allowed
-          if (s.pts_allow !== undefined && s.pts_allow !== null) {
-            weeklyStats[sleeperId].dst_points_allowed += s.pts_allow;
-            weeklyStats[sleeperId].dst_weeks += 1;
-          }
+          // DST — correct Sleeper field names (confirmed from API)
+          weeklyStats[sleeperId].dst_sacks       += s.sack    || 0;
+          weeklyStats[sleeperId].dst_ints        += s.int     || 0;
+          weeklyStats[sleeperId].dst_fumbles_rec += s.fum_rec || 0;
+          weeklyStats[sleeperId].dst_tds         += s.td      || 0;
+          weeklyStats[sleeperId].dst_tackles     += s.tkl     || 0;
+          weeklyStats[sleeperId].dst_safety      += s.safe    || 0;
+          weeklyStats[sleeperId].dst_points_allowed += s.pts_allow || 0;
 
           // Misc
           weeklyStats[sleeperId].fumbles_lost += s.fum_lost || 0;
@@ -123,15 +113,11 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // -----------------------------------------------------------------------
-    // Step 2: Fetch Sleeper player list to build name → sleeper_id map
-    // -----------------------------------------------------------------------
+    // Fetch Sleeper player list to build name -> sleeper_id map
     const sleeperPlayersRes = await fetch("https://api.sleeper.app/v1/players/nfl");
     const sleeperPlayers = await sleeperPlayersRes.json();
 
-    // Primary map: exact normalized name → sleeper_id
     const nameToSleeperId: { [name: string]: string } = {};
-    // Secondary map: normalized-no-suffix name → sleeper_id (for suffix mismatches)
     const normalizedToSleeperId: { [name: string]: string } = {};
 
     for (const [id, player] of Object.entries(sleeperPlayers as any)) {
@@ -139,16 +125,13 @@ export async function POST(req: NextRequest) {
       if (p.first_name && p.last_name) {
         const fullName = `${p.first_name} ${p.last_name}`.toLowerCase();
         nameToSleeperId[fullName] = id;
-
         const normalized = normalizeName(`${p.first_name} ${p.last_name}`);
-        // Don't overwrite if already set — first entry wins (usually the active player)
         if (!normalizedToSleeperId[normalized]) {
           normalizedToSleeperId[normalized] = id;
         }
       }
     }
 
-    // DST: Sleeper uses team abbreviations as player IDs in the stats endpoint
     const dstTeamMap: { [abbr: string]: string } = {
       "BAL": "BAL", "BUF": "BUF", "LAC": "LAC", "NE": "NE",
       "KC": "KC",   "HOU": "HOU", "DEN": "DEN",
@@ -156,9 +139,6 @@ export async function POST(req: NextRequest) {
       "DET": "DET", "PHI": "PHI", "GB": "GB",  "DAL": "DAL",
     };
 
-    // -----------------------------------------------------------------------
-    // Step 3: Match each player and upsert stats
-    // -----------------------------------------------------------------------
     let matched = 0;
     const unmatched: string[] = [];
 
@@ -176,17 +156,20 @@ export async function POST(req: NextRequest) {
         const sleeperId = abbr ? dstTeamMap[abbr] : null;
         stats = sleeperId ? weeklyStats[sleeperId] : null;
       } else {
-        // Try 1: exact lowercase match
+        // Try 0: hardcoded override
         const nameLower = player.name.toLowerCase();
-        let sleeperId = nameToSleeperId[nameLower];
+        let sleeperId = SLEEPER_ID_OVERRIDES[nameLower];
 
-        // Try 2: normalized match (strips Jr./Sr./suffixes, punctuation)
+        // Try 1: exact lowercase match
+        if (!sleeperId) sleeperId = nameToSleeperId[nameLower];
+
+        // Try 2: normalized match (strips Jr./Sr./suffixes)
         if (!sleeperId) {
           const normalized = normalizeName(player.name);
           sleeperId = normalizedToSleeperId[normalized];
         }
 
-        // Try 3: first-last word match only (handles middle names/initials)
+        // Try 3: first + last word only (handles middle initials)
         if (!sleeperId) {
           const parts = normalizeName(player.name).split(" ");
           if (parts.length > 2) {
@@ -213,8 +196,6 @@ export async function POST(req: NextRequest) {
           (stats.dst_fumbles_rec * 2) +
           (stats.dst_tds         * 6) +
           (stats.dst_safety      * 2);
-        // Points-allowed bonus is per-week and varies; we store cumulative total
-        // so skip the sliding-scale here — it's used per-game in actual scoring
       } else {
         fantasyPoints =
           (stats.pass_yards / 20) +
@@ -236,38 +217,36 @@ export async function POST(req: NextRequest) {
           player_id: player.id,
           season: 2026,
           week: 0,
-          pass_yards:        stats.pass_yards,
-          pass_tds:          stats.pass_tds,
-          interceptions:     stats.interceptions,
-          pass_attempts:     stats.pass_attempts,
-          pass_completions:  stats.pass_completions,
-          pass_first_downs:  stats.pass_first_downs,
-          rush_yards:        stats.rush_yards,
-          rush_tds:          stats.rush_tds,
-          rush_attempts:     stats.rush_attempts,
-          rush_first_downs:  stats.rush_first_downs,
-          receptions:        stats.receptions,
-          rec_yards:         stats.rec_yards,
-          rec_tds:           stats.rec_tds,
-          rec_first_downs:   stats.rec_first_downs,
-          fg_made:           stats.fg_made,
-          fg_attempts:       stats.fg_attempts,
-          xp_made:           stats.xp_made,
-          pat_attempts:      stats.pat_attempts,
-          fg_0_39:           stats.fg_0_39,
-          fg_40_49:          stats.fg_40_49,
-          fg_50_plus:        stats.fg_50_plus,
-          dst_sacks:         stats.dst_sacks,
-          dst_ints:          stats.dst_ints,
-          dst_fumbles_rec:   stats.dst_fumbles_rec,
-          dst_tds:           stats.dst_tds,
-          dst_points_allowed: stats.dst_weeks > 0
-            ? Math.round(stats.dst_points_allowed / stats.dst_weeks)
-            : 0,
-          dst_tackles:       stats.dst_tackles,
-          dst_safety:        stats.dst_safety,
-          fumbles_lost:      stats.fumbles_lost,
-          fantasy_points:    Math.round(fantasyPoints * 10) / 10,
+          pass_yards:         stats.pass_yards,
+          pass_tds:           stats.pass_tds,
+          interceptions:      stats.interceptions,
+          pass_attempts:      stats.pass_attempts,
+          pass_completions:   stats.pass_completions,
+          pass_first_downs:   stats.pass_first_downs,
+          rush_yards:         stats.rush_yards,
+          rush_tds:           stats.rush_tds,
+          rush_attempts:      stats.rush_attempts,
+          rush_first_downs:   stats.rush_first_downs,
+          receptions:         stats.receptions,
+          rec_yards:          stats.rec_yards,
+          rec_tds:            stats.rec_tds,
+          rec_first_downs:    stats.rec_first_downs,
+          fg_made:            stats.fg_made,
+          fg_attempts:        stats.fg_attempts,
+          xp_made:            stats.xp_made,
+          pat_attempts:       stats.pat_attempts,
+          fg_0_39:            stats.fg_0_39,
+          fg_40_49:           stats.fg_40_49,
+          fg_50_plus:         stats.fg_50_plus,
+          dst_sacks:          stats.dst_sacks,
+          dst_ints:           stats.dst_ints,
+          dst_fumbles_rec:    stats.dst_fumbles_rec,
+          dst_tds:            stats.dst_tds,
+          dst_points_allowed: stats.dst_points_allowed,
+          dst_tackles:        stats.dst_tackles,
+          dst_safety:         stats.dst_safety,
+          fumbles_lost:       stats.fumbles_lost,
+          fantasy_points:     Math.round(fantasyPoints * 10) / 10,
         }, { onConflict: "player_id,season,week" });
 
       matched++;
