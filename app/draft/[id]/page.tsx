@@ -35,7 +35,6 @@ function createBeep(frequency: number, duration: number, volume: number = 0.3) {
 }
 
 function playOnClockAlert() {
-  // Three ascending tones — "your turn"
   setTimeout(() => createBeep(440, 0.15, 0.4), 0);
   setTimeout(() => createBeep(550, 0.15, 0.4), 180);
   setTimeout(() => createBeep(660, 0.3, 0.5), 360);
@@ -206,7 +205,6 @@ export default function DraftPage() {
       const { data: playersData } = await supabase
         .from("players").select("*, nfl_teams(name, abbreviation, seed)").eq("season", 2026);
 
-      // Fetch ALL stat columns
       const { data: statsData } = await supabase
         .from("player_stats")
         .select("*")
@@ -303,7 +301,6 @@ export default function DraftPage() {
     timerRef.current = setInterval(() => {
       setTimeLeft(prev => {
         if (prev <= 1) { handleAutoPick(); return TIMER_SECONDS; }
-        // Audio alerts
         if (prev === 10) playUrgentBeep();
         if (prev <= 5 && prev > 0) playTickBeep();
         return prev - 1;
@@ -318,7 +315,6 @@ export default function DraftPage() {
     const myTurn = getPickOwner(picks.length + 1)?.user_id === user?.id;
     if (myTurn && !wasMyTurnRef.current) {
       playOnClockAlert();
-      // If autopick is on, pick immediately
       if (autoPickEnabledRef.current) {
         setTimeout(() => handleAutoPick(), 500);
       }
@@ -498,7 +494,6 @@ export default function DraftPage() {
     .map(id => players.find(p => p.id === id)).filter(Boolean)
     .filter((p: any) => !isPickedAlready(p.id));
 
-  // Get stat columns for current position filter
   const statCols = STAT_COLS[positionFilter] || STAT_COLS.ALL;
 
   let filteredPlayers = players.filter(p => {
@@ -513,13 +508,21 @@ export default function DraftPage() {
     const bVal = parseFloat(b[sortKey]) || 0;
     if (aVal < bVal) return sortDir === "asc" ? -1 : 1;
     if (aVal > bVal) return sortDir === "asc" ? 1 : -1;
-    // Secondary sort by fantasy_points
     return (b.fantasy_points || 0) - (a.fantasy_points || 0);
   });
 
-  // Grid template: RK + Avatar + Player name + stat cols + POS + ACTION
   const statColWidth = "3rem";
   const gridCols = `2rem 2.5rem 1fr ${statCols.map(() => statColWidth).join(" ")} 3.5rem 6rem`;
+
+  // Helper to render a stat value — show "—" only when the value is null/undefined,
+  // not when it's a legitimate 0 (e.g. DST with 0 sacks in a game)
+  function renderStat(player: any, col: StatCol): string {
+    const val = player[col.field];
+    if (val == null) return "—";
+    if (col.field === "fantasy_points") return parseFloat(val).toFixed(1);
+    const rounded = Math.round(parseFloat(val));
+    return String(rounded);
+  }
 
   if (loading) return (
     <main className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
@@ -572,7 +575,6 @@ export default function DraftPage() {
           </div>
 
           <div className="flex items-center gap-2 flex-shrink-0">
-            {/* Autopick toggle */}
             {!isPreDraft && !draftComplete && (
               <button
                 onClick={() => setAutoPickEnabled(prev => !prev)}
@@ -792,7 +794,7 @@ export default function DraftPage() {
             </div>
           </div>
 
-          {/* Column Headers — desktop only, scrollable stat cols */}
+          {/* Column Headers */}
           <div className="hidden md:block border-b border-gray-800 bg-gray-900 flex-shrink-0 overflow-x-auto">
             <div className="grid text-xs text-gray-500 font-bold uppercase px-3 py-1.5 min-w-max items-center"
               style={{ gridTemplateColumns: gridCols }}>
@@ -829,9 +831,7 @@ export default function DraftPage() {
                     </div>
                     {statCols.map(col => (
                       <span key={col.key} className={`text-xs text-right font-mono tabular-nums ${col.field === "fantasy_points" ? "text-blue-400 font-bold" : "text-gray-300"}`}>
-                        {player[col.field] != null && player[col.field] !== 0
-                          ? (col.field === "fantasy_points" ? parseFloat(player[col.field]).toFixed(1) : Math.round(player[col.field]))
-                          : "—"}
+                        {renderStat(player, col)}
                       </span>
                     ))}
                     <span className={`text-xs font-bold px-1.5 py-0.5 rounded text-center justify-self-end ${getPositionBadge(player.position)}`}>
