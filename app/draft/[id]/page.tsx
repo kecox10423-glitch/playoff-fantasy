@@ -171,10 +171,13 @@ export default function DraftPage() {
   const countdownRef = useRef<any>(null);
   const picksRef = useRef<any[]>([]);
   const membersRef = useRef<any[]>([]);
+  const leagueRef = useRef<any>(null);
   const userRef = useRef<any>(null);
+  const playersRef = useRef<any[]>([]);
   const chatEndRef = useRef<any>(null);
   const wasMyTurnRef = useRef(false);
   const autoPickEnabledRef = useRef(false);
+  const autoPickScheduledRef = useRef<any>(null);
   const router = useRouter();
   const params = useParams();
   const leagueId = params.id as string;
@@ -182,8 +185,18 @@ export default function DraftPage() {
   useEffect(() => { picksRef.current = picks; }, [picks]);
   useEffect(() => { membersRef.current = members; }, [members]);
   useEffect(() => { userRef.current = user; }, [user]);
+  useEffect(() => { leagueRef.current = league; }, [league]);
+  useEffect(() => { playersRef.current = players; }, [players]);
   useEffect(() => { autoPickEnabledRef.current = autoPickEnabled; }, [autoPickEnabled]);
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatMessages]);
+
+  // Compute time left from server-side pick_start_time
+  function getTimeLeftFromServer(pickStartTime: string | null): number {
+    if (!pickStartTime) return TIMER_SECONDS;
+    const start = parseUTCTimestamp(pickStartTime).getTime();
+    const elapsed = Math.floor((Date.now() - start) / 1000);
+    return Math.max(0, TIMER_SECONDS - elapsed);
+  }
 
   useEffect(() => {
     async function load() {
@@ -198,13 +211,8 @@ export default function DraftPage() {
         .from("league_members").select("*").eq("league_id", leagueId).order("draft_position");
       const { data: playersData } = await supabase
         .from("players").select("*, nfl_teams(name, abbreviation, seed)").eq("season", 2026);
-
       const { data: statsData } = await supabase
-        .from("player_stats")
-        .select("*")
-        .eq("season", 2026)
-        .eq("week", 0);
-
+        .from("player_stats").select("*").eq("season", 2026).eq("week", 0);
       const { data: picksData } = await supabase
         .from("draft_picks").select("*").eq("league_id", leagueId).order("pick_number");
       const { data: chatData } = await supabase
@@ -220,15 +228,23 @@ export default function DraftPage() {
       }));
 
       setLeague(leagueData);
+      leagueRef.current = leagueData;
       setMembers(membersData || []);
       membersRef.current = membersData || [];
       setPlayers(playersWithStats);
+      playersRef.current = playersWithStats;
       setPicks(picksData || []);
       picksRef.current = picksData || [];
       setChatMessages((chatData || []).map((m: any) => ({
         text: m.message, team: m.team_name,
         time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       })));
+
+      // Set timer from server time on load
+      if (leagueData?.draft_status === "IN_PROGRESS" && leagueData?.pick_start_time) {
+        setTimeLeft(getTimeLeftFromServer(leagueData.pick_start_time));
+      }
+
       setLoading(false);
 
       const presenceChannel = supabase.channel(`presence-${leagueId}`, {
@@ -245,9 +261,17 @@ export default function DraftPage() {
           }
         });
 
+      // League status updates (draft_status, pick_start_time)
       const leagueSub = supabase.channel(`league-status-${leagueId}`)
         .on("postgres_changes", { event: "UPDATE", schema: "public", table: "leagues", filter: `id=eq.${leagueId}` },
-          (payload) => { setLeague((prev: any) => ({ ...prev, ...payload.new })); })
+          (payload) => {
+            setLeague((prev: any) => ({ ...prev, ...payload.new }));
+            leagueRef.current = { ...leagueRef.current, ...payload.new };
+            // Sync timer from server when league updates
+            if (payload.new.pick_start_time) {
+              setTimeLeft(getTimeLeftFromServer(payload.new.pick_start_time));
+            }
+          })
         .subscribe();
 
       return () => {
@@ -257,20 +281,28 @@ export default function DraftPage() {
     }
     const cleanup = load();
 
-    // FIX: removed filter from subscription — filter client-side instead
-    // Supabase realtime filters require replication identity setup that isn't guaranteed
+    // Use broadcast channel for picks — more reliable than postgres_changes for real-time
+    const picksBroadcast = supabase.channel(`picks-broadcast-${leagueId}`)
+      .on("broadcast", { event: "pick" }, (payload) => {
+        const pick = payload.payload;
+        if (pick.user_id === userRef.current?.id) return; // already added optimistically
+        setPicks(prev => {
+          if (prev.some(p => p.pick_number === pick.pick_number)) return prev;
+          return [...prev, pick];
+        });
+      })
+      .subscribe();
+
+    // Also keep postgres_changes as fallback
     const picksSub = supabase.channel(`draft-picks-${leagueId}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "draft_picks" },
         (payload) => {
-          // Only process picks for this league
           if (payload.new.league_id !== leagueId) return;
-          // Don't process our own picks (already added optimistically)
           if (payload.new.user_id === userRef.current?.id) return;
           setPicks(prev => {
             if (prev.some(p => p.pick_number === payload.new.pick_number)) return prev;
             return [...prev, payload.new];
           });
-          setTimeLeft(TIMER_SECONDS);
         })
       .subscribe();
 
@@ -281,50 +313,71 @@ export default function DraftPage() {
       .subscribe();
 
     return () => {
+      supabase.removeChannel(picksBroadcast);
       supabase.removeChannel(picksSub);
       supabase.removeChannel(chatSub);
       if (timerRef.current) clearInterval(timerRef.current);
       if (countdownRef.current) clearInterval(countdownRef.current);
+      if (autoPickScheduledRef.current) clearTimeout(autoPickScheduledRef.current);
       cleanup.then(fn => fn && fn());
     };
   }, []);
 
-  // Send roster emails when draft completes — commissioner only, fires once
-  useEffect(() => {
-    if (loading || !league || !user) return;
-    const totalPicks = membersRef.current.length * TOTAL_PICKS_PER_TEAM;
-    const isDraftComplete = picks.length >= totalPicks && totalPicks > 0;
-    const isCommissioner = user.id === league.commissioner_user_id;
-    if (isDraftComplete && isCommissioner && !rosterEmailSent) {
-      setRosterEmailSent(true);
-      fetch("/api/draft/send-roster-email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ leagueId, commissionerUserId: user.id }),
-      }).catch(err => console.error("Roster email failed:", err));
-    }
-  }, [picks, loading, league, user]);
-
-  // Pick timer + audio alerts
+  // Universal timer — derives from pick_start_time, syncs every second
   useEffect(() => {
     if (loading) return;
     if (league?.draft_status !== "IN_PROGRESS") return;
     if (timerRef.current) clearInterval(timerRef.current);
+
     timerRef.current = setInterval(() => {
-      setTimeLeft(prev => {
-        if (prev <= 1) { handleAutoPick(); return TIMER_SECONDS; }
-        if (prev === 10) playUrgentBeep();
-        if (prev <= 5 && prev > 0) playTickBeep();
-        return prev - 1;
-      });
+      const currentLeague = leagueRef.current;
+      if (!currentLeague?.pick_start_time) return;
+
+      const tl = getTimeLeftFromServer(currentLeague.pick_start_time);
+      setTimeLeft(tl);
+
+      // Audio alerts
+      if (tl === 10) playUrgentBeep();
+      if (tl <= 5 && tl > 0) playTickBeep();
+
+      // Autopick when timer hits 0 — only the person on the clock triggers it
+      if (tl <= 0) {
+        const currentPicks = picksRef.current;
+        const currentMembers = membersRef.current;
+        const currentUser = userRef.current;
+        if (!currentUser || !currentMembers.length) return;
+
+        const pickNumber = currentPicks.length + 1;
+        const numTeams = currentMembers.length;
+        const round = Math.ceil(pickNumber / numTeams);
+        const posInRound = (pickNumber - 1) % numTeams;
+        const index = round % 2 === 0 ? numTeams - 1 - posInRound : posInRound;
+        const owner = currentMembers[index];
+
+        if (owner?.user_id === currentUser.id) {
+          handleAutoPick();
+        }
+      }
     }, 1000);
+
     return () => clearInterval(timerRef.current);
-  }, [picks, loading, members, league?.draft_status]);
+  }, [loading, league?.draft_status, league?.pick_start_time]);
 
   // On-clock alert
   useEffect(() => {
     if (loading || league?.draft_status !== "IN_PROGRESS") return;
-    const myTurn = getPickOwner(picks.length + 1)?.user_id === user?.id;
+    const currentPicks = picksRef.current;
+    const currentMembers = membersRef.current;
+    if (!currentMembers.length) return;
+
+    const pickNumber = currentPicks.length + 1;
+    const numTeams = currentMembers.length;
+    const round = Math.ceil(pickNumber / numTeams);
+    const posInRound = (pickNumber - 1) % numTeams;
+    const index = round % 2 === 0 ? numTeams - 1 - posInRound : posInRound;
+    const owner = currentMembers[index];
+    const myTurn = owner?.user_id === user?.id;
+
     if (myTurn && !wasMyTurnRef.current) {
       playOnClockAlert();
       if (autoPickEnabledRef.current) {
@@ -334,7 +387,7 @@ export default function DraftPage() {
     wasMyTurnRef.current = myTurn;
   }, [picks, league?.draft_status]);
 
-  // Countdown timer
+  // Countdown timer (pre-draft)
   useEffect(() => {
     if (loading) return;
     const isPreDraft = league?.draft_status !== "IN_PROGRESS" && league?.draft_status !== "COMPLETED";
@@ -357,15 +410,36 @@ export default function DraftPage() {
     return () => clearInterval(countdownRef.current);
   }, [loading, league?.draft_status, league?.draft_time]);
 
+  // Roster email on draft complete
+  useEffect(() => {
+    if (loading || !league || !user) return;
+    const totalPicks = membersRef.current.length * TOTAL_PICKS_PER_TEAM;
+    const isDraftComplete = picks.length >= totalPicks && totalPicks > 0;
+    const isCommissioner = user.id === league.commissioner_user_id;
+    if (isDraftComplete && isCommissioner && !rosterEmailSent) {
+      setRosterEmailSent(true);
+      fetch("/api/draft/send-roster-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leagueId, commissionerUserId: user.id }),
+      }).catch(err => console.error("Roster email failed:", err));
+    }
+  }, [picks, loading, league, user]);
+
   async function handleStartDraft() {
     setStartingDraft(true);
-    await supabase.from("leagues").update({ draft_status: "IN_PROGRESS" }).eq("id", leagueId);
-    setLeague((prev: any) => ({ ...prev, draft_status: "IN_PROGRESS" }));
+    const now = new Date().toISOString();
+    await supabase.from("leagues").update({
+      draft_status: "IN_PROGRESS",
+      pick_start_time: now,
+    }).eq("id", leagueId);
+    setLeague((prev: any) => ({ ...prev, draft_status: "IN_PROGRESS", pick_start_time: now }));
+    leagueRef.current = { ...leagueRef.current, draft_status: "IN_PROGRESS", pick_start_time: now };
     setTimeLeft(TIMER_SECONDS);
     setStartingDraft(false);
   }
 
-  function getCurrentPickNumber() { return picks.length + 1; }
+  function getCurrentPickNumber() { return picksRef.current.length + 1; }
 
   function getPickOwner(pickNumber: number) {
     const m = membersRef.current;
@@ -383,7 +457,7 @@ export default function DraftPage() {
   }
 
   function isMyTurn() {
-    return getPickOwner(getCurrentPickNumber())?.user_id === user?.id;
+    return getPickOwner(picks.length + 1)?.user_id === user?.id;
   }
 
   function isPickedAlready(playerId: number) {
@@ -424,18 +498,31 @@ export default function DraftPage() {
 
   async function makePick(playerId: number) {
     if (!isMyTurn() || isPreDraft) return;
-    const pickNumber = getCurrentPickNumber();
+    const currentPicks = picksRef.current;
+    const pickNumber = currentPicks.length + 1;
     const numTeams = members.length;
     const round = Math.ceil(pickNumber / numTeams);
     const pickInRound = ((pickNumber - 1) % numTeams) + 1;
+    const now = new Date().toISOString();
 
-    setPicks(prev => [...prev, {
+    const newPick = {
       id: `optimistic-${Date.now()}`, league_id: leagueId, user_id: user.id,
       player_id: playerId, pick_number: pickNumber, round, pick_in_round: pickInRound, is_auto_pick: false,
-    }]);
+    };
+
+    setPicks(prev => [...prev, newPick]);
     setTimeLeft(TIMER_SECONDS);
     setQueue(prev => prev.filter(id => id !== playerId));
 
+    // Broadcast pick to all other browsers instantly
+    await supabase.channel(`picks-broadcast-${leagueId}`).send({
+      type: "broadcast", event: "pick", payload: newPick,
+    });
+
+    // Update pick_start_time so all browsers sync timer
+    await supabase.from("leagues").update({ pick_start_time: now }).eq("id", leagueId);
+
+    // Save pick to DB
     await supabase.from("draft_picks").insert({
       league_id: leagueId, user_id: user.id, player_id: playerId,
       pick_number: pickNumber, round, pick_in_round: pickInRound,
@@ -446,26 +533,48 @@ export default function DraftPage() {
     const currentPicks = picksRef.current;
     const currentMembers = membersRef.current;
     const currentUser = userRef.current;
+    const currentPlayers = playersRef.current;
+    if (!currentUser || !currentMembers.length) return;
+
     const pickNumber = currentPicks.length + 1;
-    const owner = getPickOwner(pickNumber);
-    if (!owner || owner.user_id !== currentUser?.id) return;
+    const numTeams = currentMembers.length;
+    const round = Math.ceil(pickNumber / numTeams);
+    const posInRound = (pickNumber - 1) % numTeams;
+    const index = round % 2 === 0 ? numTeams - 1 - posInRound : posInRound;
+    const owner = currentMembers[index];
+
+    // Only the person on the clock triggers autopick
+    if (!owner || owner.user_id !== currentUser.id) return;
 
     const pickedIds = currentPicks.map((p: any) => p.player_id);
-    const available = [...players]
+    const available = [...currentPlayers]
       .filter(p => !pickedIds.includes(p.id))
       .sort((a, b) => (b.fantasy_points || 0) - (a.fantasy_points || 0))[0];
     if (!available) return;
 
-    const numTeams = currentMembers.length;
-    const round = Math.ceil(pickNumber / numTeams);
     const pickInRound = ((pickNumber - 1) % numTeams) + 1;
+    const now = new Date().toISOString();
 
-    setPicks(prev => [...prev, {
+    const newPick = {
       id: `optimistic-auto-${Date.now()}`, league_id: leagueId, user_id: owner.user_id,
       player_id: available.id, pick_number: pickNumber, round, pick_in_round: pickInRound, is_auto_pick: true,
-    }]);
+    };
+
+    setPicks(prev => {
+      if (prev.some(p => p.pick_number === pickNumber)) return prev;
+      return [...prev, newPick];
+    });
     setTimeLeft(TIMER_SECONDS);
 
+    // Broadcast autopick to all other browsers
+    await supabase.channel(`picks-broadcast-${leagueId}`).send({
+      type: "broadcast", event: "pick", payload: newPick,
+    });
+
+    // Update pick_start_time
+    await supabase.from("leagues").update({ pick_start_time: now }).eq("id", leagueId);
+
+    // Save to DB
     await supabase.from("draft_picks").insert({
       league_id: leagueId, user_id: owner.user_id, player_id: available.id,
       pick_number: pickNumber, round, pick_in_round: pickInRound, is_auto_pick: true,
@@ -487,7 +596,7 @@ export default function DraftPage() {
   const isPreDraft = league?.draft_status !== "IN_PROGRESS" && league?.draft_status !== "COMPLETED";
   const totalPicks = members.length * TOTAL_PICKS_PER_TEAM;
   const draftComplete = picks.length >= totalPicks;
-  const currentPickNumber = getCurrentPickNumber();
+  const currentPickNumber = picks.length + 1;
   const currentPickOwner = getPickOwner(currentPickNumber);
   const nextPickOwner = draftComplete ? null : getPickOwner(currentPickNumber + 1);
   const lastPick = picks.length > 0 ? picks[picks.length - 1] : null;
