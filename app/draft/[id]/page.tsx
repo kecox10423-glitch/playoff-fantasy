@@ -257,16 +257,20 @@ export default function DraftPage() {
     }
     const cleanup = load();
 
+    // FIX: removed filter from subscription — filter client-side instead
+    // Supabase realtime filters require replication identity setup that isn't guaranteed
     const picksSub = supabase.channel(`draft-picks-${leagueId}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "draft_picks", filter: `league_id=eq.${leagueId}` },
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "draft_picks" },
         (payload) => {
-          if (payload.new.user_id !== userRef.current?.id) {
-            setPicks(prev => {
-              if (prev.some(p => p.pick_number === payload.new.pick_number)) return prev;
-              return [...prev, payload.new];
-            });
-            setTimeLeft(TIMER_SECONDS);
-          }
+          // Only process picks for this league
+          if (payload.new.league_id !== leagueId) return;
+          // Don't process our own picks (already added optimistically)
+          if (payload.new.user_id === userRef.current?.id) return;
+          setPicks(prev => {
+            if (prev.some(p => p.pick_number === payload.new.pick_number)) return prev;
+            return [...prev, payload.new];
+          });
+          setTimeLeft(TIMER_SECONDS);
         })
       .subscribe();
 
