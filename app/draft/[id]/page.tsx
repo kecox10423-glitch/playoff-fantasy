@@ -42,6 +42,13 @@ function playOnClockAlert() {
 function playUrgentBeep() { createBeep(880, 0.2, 0.4); }
 function playTickBeep() { createBeep(660, 0.08, 0.25); }
 
+function playDraftOpeningAlert() {
+  setTimeout(() => createBeep(523, 0.2, 0.5), 0);
+  setTimeout(() => createBeep(659, 0.2, 0.5), 200);
+  setTimeout(() => createBeep(784, 0.2, 0.5), 400);
+  setTimeout(() => createBeep(1047, 0.4, 0.6), 600);
+}
+
 function PFFLLogo({ size = 28 }: { size?: number }) {
   return (
     <img src="/apple-touch-icon.png" alt="PFFL Logo" width={size} height={size} style={{ borderRadius: "20%" }} />
@@ -158,6 +165,7 @@ export default function DraftPage() {
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [timeLeft, setTimeLeft] = useState(TIMER_SECONDS);
   const [countdown, setCountdown] = useState<{ d: number; h: number; m: number; s: number } | null>(null);
+  const [countdownWarning, setCountdownWarning] = useState(false);
   const [chatMessages, setChatMessages] = useState<any[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [queue, setQueue] = useState<number[]>([]);
@@ -167,6 +175,7 @@ export default function DraftPage() {
   const [startingDraft, setStartingDraft] = useState(false);
   const [autoPickEnabled, setAutoPickEnabled] = useState(false);
   const [rosterEmailSent, setRosterEmailSent] = useState(false);
+  const [positionError, setPositionError] = useState<string | null>(null);
   const timerRef = useRef<any>(null);
   const countdownRef = useRef<any>(null);
   const picksRef = useRef<any[]>([]);
@@ -177,7 +186,7 @@ export default function DraftPage() {
   const chatEndRef = useRef<any>(null);
   const wasMyTurnRef = useRef(false);
   const autoPickEnabledRef = useRef(false);
-  const autoPickScheduledRef = useRef<any>(null);
+  const pickStartTimeRef = useRef<string | null>(null);
   const router = useRouter();
   const params = useParams();
   const leagueId = params.id as string;
@@ -190,7 +199,6 @@ export default function DraftPage() {
   useEffect(() => { autoPickEnabledRef.current = autoPickEnabled; }, [autoPickEnabled]);
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatMessages]);
 
-  // Compute time left from server-side pick_start_time
   function getTimeLeftFromServer(pickStartTime: string | null): number {
     if (!pickStartTime) return TIMER_SECONDS;
     const start = parseUTCTimestamp(pickStartTime).getTime();
@@ -240,9 +248,16 @@ export default function DraftPage() {
         time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       })));
 
-      // Set timer from server time on load
       if (leagueData?.draft_status === "IN_PROGRESS" && leagueData?.pick_start_time) {
+        pickStartTimeRef.current = leagueData.pick_start_time;
         setTimeLeft(getTimeLeftFromServer(leagueData.pick_start_time));
+      }
+
+      // Check if draft is complete on load and update status
+      const totalP = (membersData || []).length * TOTAL_PICKS_PER_TEAM;
+      if (leagueData?.draft_status === "IN_PROGRESS" && (picksData || []).length >= totalP && totalP > 0) {
+        await supabase.from("leagues").update({ draft_status: "COMPLETED" }).eq("id", leagueId);
+        setLeague((prev: any) => ({ ...prev, draft_status: "COMPLETED" }));
       }
 
       setLoading(false);
@@ -261,14 +276,13 @@ export default function DraftPage() {
           }
         });
 
-      // League status updates (draft_status, pick_start_time)
       const leagueSub = supabase.channel(`league-status-${leagueId}`)
         .on("postgres_changes", { event: "UPDATE", schema: "public", table: "leagues", filter: `id=eq.${leagueId}` },
           (payload) => {
             setLeague((prev: any) => ({ ...prev, ...payload.new }));
             leagueRef.current = { ...leagueRef.current, ...payload.new };
-            // Sync timer from server when league updates
             if (payload.new.pick_start_time) {
+              pickStartTimeRef.current = payload.new.pick_start_time;
               setTimeLeft(getTimeLeftFromServer(payload.new.pick_start_time));
             }
           })
@@ -281,19 +295,24 @@ export default function DraftPage() {
     }
     const cleanup = load();
 
-    // Use broadcast channel for picks — more reliable than postgres_changes for real-time
+    // Broadcast channel for picks — fast realtime without DB overhead
     const picksBroadcast = supabase.channel(`picks-broadcast-${leagueId}`)
       .on("broadcast", { event: "pick" }, (payload) => {
         const pick = payload.payload;
-        if (pick.user_id === userRef.current?.id) return; // already added optimistically
+        if (pick.user_id === userRef.current?.id) return;
         setPicks(prev => {
           if (prev.some(p => p.pick_number === pick.pick_number)) return prev;
           return [...prev, pick];
         });
+        // Sync timer from broadcast payload
+        if (pick.pick_start_time) {
+          pickStartTimeRef.current = pick.pick_start_time;
+          setTimeLeft(getTimeLeftFromServer(pick.pick_start_time));
+        }
       })
       .subscribe();
 
-    // Also keep postgres_changes as fallback
+    // Postgres changes as fallback
     const picksSub = supabase.channel(`draft-picks-${leagueId}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "draft_picks" },
         (payload) => {
@@ -318,29 +337,24 @@ export default function DraftPage() {
       supabase.removeChannel(chatSub);
       if (timerRef.current) clearInterval(timerRef.current);
       if (countdownRef.current) clearInterval(countdownRef.current);
-      if (autoPickScheduledRef.current) clearTimeout(autoPickScheduledRef.current);
       cleanup.then(fn => fn && fn());
     };
   }, []);
 
-  // Universal timer — derives from pick_start_time, syncs every second
+  // Universal timer — derives from pickStartTimeRef every second
   useEffect(() => {
     if (loading) return;
     if (league?.draft_status !== "IN_PROGRESS") return;
     if (timerRef.current) clearInterval(timerRef.current);
 
     timerRef.current = setInterval(() => {
-      const currentLeague = leagueRef.current;
-      if (!currentLeague?.pick_start_time) return;
-
-      const tl = getTimeLeftFromServer(currentLeague.pick_start_time);
+      if (!pickStartTimeRef.current) return;
+      const tl = getTimeLeftFromServer(pickStartTimeRef.current);
       setTimeLeft(tl);
 
-      // Audio alerts
       if (tl === 10) playUrgentBeep();
       if (tl <= 5 && tl > 0) playTickBeep();
 
-      // Autopick when timer hits 0 — only the person on the clock triggers it
       if (tl <= 0) {
         const currentPicks = picksRef.current;
         const currentMembers = membersRef.current;
@@ -361,7 +375,7 @@ export default function DraftPage() {
     }, 1000);
 
     return () => clearInterval(timerRef.current);
-  }, [loading, league?.draft_status, league?.pick_start_time]);
+  }, [loading, league?.draft_status]);
 
   // On-clock alert
   useEffect(() => {
@@ -387,27 +401,44 @@ export default function DraftPage() {
     wasMyTurnRef.current = myTurn;
   }, [picks, league?.draft_status]);
 
-  // Countdown timer (pre-draft)
+  // Countdown timer with 10-second warning
   useEffect(() => {
     if (loading) return;
     const isPreDraft = league?.draft_status !== "IN_PROGRESS" && league?.draft_status !== "COMPLETED";
     if (!isPreDraft || !league?.draft_time) { setCountdown(null); return; }
 
+    let warnedAt10 = false;
+
     function tick() {
       const target = parseUTCTimestamp(league.draft_time).getTime();
       const diff = target - Date.now();
-      if (diff <= 0) { setCountdown({ d: 0, h: 0, m: 0, s: 0 }); return; }
+      if (diff <= 0) {
+        setCountdown({ d: 0, h: 0, m: 0, s: 0 });
+        return;
+      }
+      const secs = Math.floor(diff / 1000);
       setCountdown({
         d: Math.floor(diff / 86400000),
         h: Math.floor((diff % 86400000) / 3600000),
         m: Math.floor((diff % 3600000) / 60000),
-        s: Math.floor((diff % 60000) / 1000),
+        s: secs % 60,
       });
+      // 10-second warning
+      if (secs <= 10 && !warnedAt10) {
+        warnedAt10 = true;
+        setCountdownWarning(true);
+        playDraftOpeningAlert();
+      } else if (secs > 10) {
+        setCountdownWarning(false);
+      }
     }
     tick();
     if (countdownRef.current) clearInterval(countdownRef.current);
     countdownRef.current = setInterval(tick, 1000);
-    return () => clearInterval(countdownRef.current);
+    return () => {
+      clearInterval(countdownRef.current);
+      setCountdownWarning(false);
+    };
   }, [loading, league?.draft_status, league?.draft_time]);
 
   // Roster email on draft complete
@@ -418,6 +449,9 @@ export default function DraftPage() {
     const isCommissioner = user.id === league.commissioner_user_id;
     if (isDraftComplete && isCommissioner && !rosterEmailSent) {
       setRosterEmailSent(true);
+      // Mark draft as completed in DB
+      supabase.from("leagues").update({ draft_status: "COMPLETED" }).eq("id", leagueId);
+      setLeague((prev: any) => ({ ...prev, draft_status: "COMPLETED" }));
       fetch("/api/draft/send-roster-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -429,6 +463,7 @@ export default function DraftPage() {
   async function handleStartDraft() {
     setStartingDraft(true);
     const now = new Date().toISOString();
+    pickStartTimeRef.current = now;
     await supabase.from("leagues").update({
       draft_status: "IN_PROGRESS",
       pick_start_time: now,
@@ -438,8 +473,6 @@ export default function DraftPage() {
     setTimeLeft(TIMER_SECONDS);
     setStartingDraft(false);
   }
-
-  function getCurrentPickNumber() { return picksRef.current.length + 1; }
 
   function getPickOwner(pickNumber: number) {
     const m = membersRef.current;
@@ -473,6 +506,12 @@ export default function DraftPage() {
     return getMyRoster().filter((p: any) => p.position === position);
   }
 
+  function canDraftPosition(position: string): boolean {
+    const slots = ROSTER_SLOTS[position as keyof typeof ROSTER_SLOTS] || 0;
+    const current = getRosterByPosition(position).length;
+    return current < slots;
+  }
+
   function toggleQueue(playerId: number) {
     setQueue(prev => prev.includes(playerId) ? prev.filter(id => id !== playerId) : [...prev, playerId]);
   }
@@ -498,31 +537,39 @@ export default function DraftPage() {
 
   async function makePick(playerId: number) {
     if (!isMyTurn() || isPreDraft) return;
+
+    // Check position limit
+    const player = players.find(p => p.id === playerId);
+    if (player && !canDraftPosition(player.position)) {
+      setPositionError(`You already have the maximum number of ${player.position}s.`);
+      setTimeout(() => setPositionError(null), 3000);
+      return;
+    }
+
     const currentPicks = picksRef.current;
     const pickNumber = currentPicks.length + 1;
     const numTeams = members.length;
     const round = Math.ceil(pickNumber / numTeams);
     const pickInRound = ((pickNumber - 1) % numTeams) + 1;
-    const now = new Date().toISOString();
+    const pickStartTime = new Date().toISOString();
 
     const newPick = {
       id: `optimistic-${Date.now()}`, league_id: leagueId, user_id: user.id,
-      player_id: playerId, pick_number: pickNumber, round, pick_in_round: pickInRound, is_auto_pick: false,
+      player_id: playerId, pick_number: pickNumber, round, pick_in_round: pickInRound,
+      is_auto_pick: false, pick_start_time: pickStartTime,
     };
 
     setPicks(prev => [...prev, newPick]);
+    pickStartTimeRef.current = pickStartTime;
     setTimeLeft(TIMER_SECONDS);
     setQueue(prev => prev.filter(id => id !== playerId));
 
-    // Broadcast pick to all other browsers instantly
+    // Broadcast pick + timer to all browsers — fast, no DB hit
     await supabase.channel(`picks-broadcast-${leagueId}`).send({
       type: "broadcast", event: "pick", payload: newPick,
     });
 
-    // Update pick_start_time so all browsers sync timer
-    await supabase.from("leagues").update({ pick_start_time: now }).eq("id", leagueId);
-
-    // Save pick to DB
+    // Single DB insert — only one call per pick
     await supabase.from("draft_picks").insert({
       league_id: leagueId, user_id: user.id, player_id: playerId,
       pick_number: pickNumber, round, pick_in_round: pickInRound,
@@ -543,38 +590,54 @@ export default function DraftPage() {
     const index = round % 2 === 0 ? numTeams - 1 - posInRound : posInRound;
     const owner = currentMembers[index];
 
-    // Only the person on the clock triggers autopick
     if (!owner || owner.user_id !== currentUser.id) return;
 
+    // Guard against double autopick
+    if (currentPicks.some(p => p.pick_number === pickNumber)) return;
+
     const pickedIds = currentPicks.map((p: any) => p.player_id);
+
+    // Respect position limits for autopick
+    const myCurrentPicks = currentPicks.filter((p: any) => p.user_id === currentUser.id);
+    const positionCounts: { [pos: string]: number } = {};
+    myCurrentPicks.forEach((p: any) => {
+      const pl = currentPlayers.find((pl: any) => pl.id === p.player_id);
+      if (pl) positionCounts[pl.position] = (positionCounts[pl.position] || 0) + 1;
+    });
+
     const available = [...currentPlayers]
       .filter(p => !pickedIds.includes(p.id))
+      .filter(p => {
+        const limit = ROSTER_SLOTS[p.position as keyof typeof ROSTER_SLOTS] || 0;
+        const current = positionCounts[p.position] || 0;
+        return current < limit;
+      })
       .sort((a, b) => (b.fantasy_points || 0) - (a.fantasy_points || 0))[0];
+
     if (!available) return;
 
     const pickInRound = ((pickNumber - 1) % numTeams) + 1;
-    const now = new Date().toISOString();
+    const pickStartTime = new Date().toISOString();
 
     const newPick = {
       id: `optimistic-auto-${Date.now()}`, league_id: leagueId, user_id: owner.user_id,
-      player_id: available.id, pick_number: pickNumber, round, pick_in_round: pickInRound, is_auto_pick: true,
+      player_id: available.id, pick_number: pickNumber, round, pick_in_round: pickInRound,
+      is_auto_pick: true, pick_start_time: pickStartTime,
     };
 
     setPicks(prev => {
       if (prev.some(p => p.pick_number === pickNumber)) return prev;
       return [...prev, newPick];
     });
+    pickStartTimeRef.current = pickStartTime;
     setTimeLeft(TIMER_SECONDS);
 
-    // Broadcast autopick to all other browsers
+    // Broadcast autopick
     await supabase.channel(`picks-broadcast-${leagueId}`).send({
       type: "broadcast", event: "pick", payload: newPick,
     });
 
-    // Update pick_start_time
-    await supabase.from("leagues").update({ pick_start_time: now }).eq("id", leagueId);
-
-    // Save to DB
+    // Single DB insert
     await supabase.from("draft_picks").insert({
       league_id: leagueId, user_id: owner.user_id, player_id: available.id,
       pick_number: pickNumber, round, pick_in_round: pickInRound, is_auto_pick: true,
@@ -669,11 +732,13 @@ export default function DraftPage() {
             {isPreDraft ? (
               countdown ? (
                 <>
-                  <div className="text-lg sm:text-2xl font-mono font-black text-blue-400">
+                  <div className={`text-lg sm:text-2xl font-mono font-black transition-colors ${countdownWarning ? "text-red-400 animate-pulse" : "text-blue-400"}`}>
                     {countdown.d > 0 && `${countdown.d}d `}
                     {String(countdown.h).padStart(2, "0")}:{String(countdown.m).padStart(2, "0")}:{String(countdown.s).padStart(2, "0")}
                   </div>
-                  <p className="text-xs text-gray-500 whitespace-nowrap">Until Draft Starts</p>
+                  <p className={`text-xs whitespace-nowrap ${countdownWarning ? "text-red-400 font-bold" : "text-gray-500"}`}>
+                    {countdownWarning ? "🚨 Draft starting!" : "Until Draft Starts"}
+                  </p>
                 </>
               ) : (
                 <>
@@ -725,12 +790,17 @@ export default function DraftPage() {
         </div>
 
         {/* Row 2: Status bar */}
-        <div className={`px-2 sm:px-4 py-2 flex items-center justify-between gap-2 ${isMyTurn() && !draftComplete && !isPreDraft ? "bg-green-900" : ""}`}>
+        <div className={`px-2 sm:px-4 py-2 flex items-center justify-between gap-2 ${
+          countdownWarning && isPreDraft ? "bg-red-950" :
+          isMyTurn() && !draftComplete && !isPreDraft ? "bg-green-900" : ""
+        }`}>
           <div className="flex-1 min-w-0">
             {isPreDraft ? (
-              <p className="text-blue-300 text-xs sm:text-sm">
-                🔍 Pre-Draft Lobby — browse players, set your queue, and chat. Drafting opens when the clock hits zero
-                {isCommissioner ? ` or you hit Start.` : `.`}
+              <p className={`text-xs sm:text-sm ${countdownWarning ? "text-red-300 font-bold animate-pulse" : "text-blue-300"}`}>
+                {countdownWarning
+                  ? "🚨 Draft is about to start — get ready!"
+                  : `🔍 Pre-Draft Lobby — browse players, set your queue, and chat. Drafting opens when the clock hits zero${isCommissioner ? " or you hit Start." : "."}`
+                }
               </p>
             ) : draftComplete ? (
               <p className="font-bold text-green-400 text-sm">🏆 Draft Complete! Roster emails sent to all teams.</p>
@@ -765,6 +835,13 @@ export default function DraftPage() {
             )}
           </div>
         </div>
+
+        {/* Position error banner */}
+        {positionError && (
+          <div className="px-4 py-2 bg-red-900 border-t border-red-700 text-red-200 text-xs font-bold text-center">
+            ⚠️ {positionError}
+          </div>
+        )}
 
         {/* Row 3: Snake Order Strip */}
         <div className="border-t border-gray-800 px-2 sm:px-4 py-2 overflow-x-auto">
@@ -854,7 +931,9 @@ export default function DraftPage() {
               <div key={pos} className="mb-3">
                 <div className="flex justify-between items-center mb-1">
                   <span className={`text-xs font-black px-1.5 py-0.5 rounded ${getPositionBadge(pos)}`}>{pos}</span>
-                  <span className="text-xs text-gray-600">{getRosterByPosition(pos).length}/{slots}</span>
+                  <span className={`text-xs font-bold ${getRosterByPosition(pos).length >= slots ? "text-green-400" : "text-gray-600"}`}>
+                    {getRosterByPosition(pos).length}/{slots}
+                  </span>
                 </div>
                 {Array.from({ length: slots }, (_, i) => {
                   const player = getRosterByPosition(pos)[i];
@@ -904,12 +983,18 @@ export default function DraftPage() {
               </button>
             </div>
             <div className="flex gap-1 flex-wrap">
-              {["ALL", "QB", "RB", "WR", "TE", "K", "DST"].map(pos => (
-                <button key={pos} onClick={() => { setPositionFilter(pos); setSortKey("fantasy_points"); setSortDir("desc"); }}
-                  className={`px-2 py-1 rounded text-xs font-bold ${positionFilter === pos ? "bg-green-600 text-white" : "bg-gray-800 text-gray-400 hover:bg-gray-700"}`}>
-                  {pos}
-                </button>
-              ))}
+              {["ALL", "QB", "RB", "WR", "TE", "K", "DST"].map(pos => {
+                const slots = ROSTER_SLOTS[pos as keyof typeof ROSTER_SLOTS] || 0;
+                const filled = pos === "ALL" ? 0 : getRosterByPosition(pos).length;
+                const full = pos !== "ALL" && filled >= slots;
+                return (
+                  <button key={pos} onClick={() => { setPositionFilter(pos); setSortKey("fantasy_points"); setSortDir("desc"); }}
+                    className={`px-2 py-1 rounded text-xs font-bold relative ${positionFilter === pos ? "bg-green-600 text-white" : full ? "bg-gray-800 text-green-400 ring-1 ring-green-700" : "bg-gray-800 text-gray-400 hover:bg-gray-700"}`}>
+                    {pos}
+                    {full && <span className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full" />}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -937,6 +1022,7 @@ export default function DraftPage() {
               {filteredPlayers.map((player, index) => {
                 const picked = isPickedAlready(player.id);
                 const inQueue = queue.includes(player.id);
+                const positionFull = !canDraftPosition(player.position);
                 return (
                   <div key={player.id}
                     className={`grid items-center border-b border-gray-800 px-3 py-2 min-w-max transition-colors ${picked ? "opacity-30 bg-gray-950" : "hover:bg-gray-900"}`}
@@ -963,9 +1049,12 @@ export default function DraftPage() {
                             {inQueue ? "★" : "☆"}
                           </button>
                           {isMyTurn() && !isPreDraft && (
-                            <button onClick={() => makePick(player.id)}
-                              className="bg-green-600 hover:bg-green-500 text-white text-xs font-bold px-3 py-1 rounded">
-                              Draft
+                            <button
+                              onClick={() => makePick(player.id)}
+                              disabled={positionFull}
+                              title={positionFull ? `${player.position} slots full` : "Draft"}
+                              className={`text-xs font-bold px-3 py-1 rounded ${positionFull ? "bg-gray-700 text-gray-500 cursor-not-allowed" : "bg-green-600 hover:bg-green-500 text-white"}`}>
+                              {positionFull ? "Full" : "Draft"}
                             </button>
                           )}
                         </>
@@ -982,6 +1071,7 @@ export default function DraftPage() {
               {filteredPlayers.map((player, index) => {
                 const picked = isPickedAlready(player.id);
                 const inQueue = queue.includes(player.id);
+                const positionFull = !canDraftPosition(player.position);
                 return (
                   <div key={player.id}
                     className={`px-3 py-2.5 border-b border-gray-800 flex items-center gap-2 ${picked ? "opacity-30 bg-gray-950" : "active:bg-gray-900"}`}>
@@ -1004,9 +1094,11 @@ export default function DraftPage() {
                             {inQueue ? "★" : "☆"}
                           </button>
                           {isMyTurn() && !isPreDraft && (
-                            <button onClick={() => makePick(player.id)}
-                              className="bg-green-600 text-white text-xs font-bold px-3 py-1.5 rounded">
-                              Draft
+                            <button
+                              onClick={() => makePick(player.id)}
+                              disabled={positionFull}
+                              className={`text-xs font-bold px-3 py-1.5 rounded ${positionFull ? "bg-gray-700 text-gray-500 cursor-not-allowed" : "bg-green-600 text-white"}`}>
+                              {positionFull ? "Full" : "Draft"}
                             </button>
                           )}
                         </>
