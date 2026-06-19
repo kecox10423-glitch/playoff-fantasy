@@ -38,10 +38,8 @@ function playOnClockAlert() {
   setTimeout(() => createBeep(550, 0.15, 0.4), 180);
   setTimeout(() => createBeep(660, 0.3, 0.5), 360);
 }
-
 function playUrgentBeep() { createBeep(880, 0.2, 0.4); }
 function playTickBeep() { createBeep(660, 0.08, 0.25); }
-
 function playDraftOpeningAlert() {
   setTimeout(() => createBeep(523, 0.2, 0.5), 0);
   setTimeout(() => createBeep(659, 0.2, 0.5), 200);
@@ -50,9 +48,7 @@ function playDraftOpeningAlert() {
 }
 
 function PFFLLogo({ size = 28 }: { size?: number }) {
-  return (
-    <img src="/apple-touch-icon.png" alt="PFFL Logo" width={size} height={size} style={{ borderRadius: "20%" }} />
-  );
+  return <img src="/apple-touch-icon.png" alt="PFFL Logo" width={size} height={size} style={{ borderRadius: "20%" }} />;
 }
 
 function PlayerAvatar({ name, position }: { name: string; position: string }) {
@@ -86,65 +82,48 @@ type StatCol = { key: string; label: string; field: string };
 const STAT_COLS: { [pos: string]: StatCol[] } = {
   QB: [
     { key: "proj", label: "FPTS", field: "fantasy_points" },
-    { key: "pass_completions", label: "PC", field: "pass_completions" },
-    { key: "pass_attempts", label: "PA", field: "pass_attempts" },
     { key: "pass_yards", label: "PY", field: "pass_yards" },
     { key: "pass_tds", label: "PTD", field: "pass_tds" },
-    { key: "pass_first_downs", label: "PFD", field: "pass_first_downs" },
     { key: "interceptions", label: "INT", field: "interceptions" },
-    { key: "rush_attempts", label: "RA", field: "rush_attempts" },
     { key: "rush_yards", label: "RY", field: "rush_yards" },
     { key: "rush_tds", label: "RTD", field: "rush_tds" },
   ],
   RB: [
     { key: "proj", label: "FPTS", field: "fantasy_points" },
-    { key: "rush_attempts", label: "RA", field: "rush_attempts" },
     { key: "rush_yards", label: "RY", field: "rush_yards" },
     { key: "rush_tds", label: "RTD", field: "rush_tds" },
-    { key: "rush_first_downs", label: "RFD", field: "rush_first_downs" },
     { key: "receptions", label: "REC", field: "receptions" },
     { key: "rec_yards", label: "REY", field: "rec_yards" },
     { key: "rec_tds", label: "RETD", field: "rec_tds" },
-    { key: "rec_first_downs", label: "REFD", field: "rec_first_downs" },
   ],
   WR: [
     { key: "proj", label: "FPTS", field: "fantasy_points" },
     { key: "receptions", label: "REC", field: "receptions" },
     { key: "rec_yards", label: "REY", field: "rec_yards" },
     { key: "rec_tds", label: "RETD", field: "rec_tds" },
-    { key: "rec_first_downs", label: "REFD", field: "rec_first_downs" },
     { key: "rush_yards", label: "RY", field: "rush_yards" },
-    { key: "rush_tds", label: "RTD", field: "rush_tds" },
   ],
   TE: [
     { key: "proj", label: "FPTS", field: "fantasy_points" },
     { key: "receptions", label: "REC", field: "receptions" },
     { key: "rec_yards", label: "REY", field: "rec_yards" },
     { key: "rec_tds", label: "RETD", field: "rec_tds" },
-    { key: "rec_first_downs", label: "REFD", field: "rec_first_downs" },
   ],
   K: [
     { key: "proj", label: "FPTS", field: "fantasy_points" },
-    { key: "fg_attempts", label: "FGA", field: "fg_attempts" },
     { key: "fg_made", label: "FG", field: "fg_made" },
-    { key: "fg_0_39", label: "FG0", field: "fg_0_39" },
-    { key: "fg_40_49", label: "FG40", field: "fg_40_49" },
-    { key: "fg_50_plus", label: "FG50", field: "fg_50_plus" },
-    { key: "pat_attempts", label: "PATA", field: "pat_attempts" },
-    { key: "xp_made", label: "PAT", field: "xp_made" },
+    { key: "fg_attempts", label: "FGA", field: "fg_attempts" },
+    { key: "fg_50_plus", label: "FG50+", field: "fg_50_plus" },
+    { key: "xp_made", label: "XP", field: "xp_made" },
   ],
   DST: [
     { key: "proj", label: "FPTS", field: "fantasy_points" },
-    { key: "dst_tackles", label: "TK", field: "dst_tackles" },
     { key: "dst_sacks", label: "SK", field: "dst_sacks" },
     { key: "dst_ints", label: "INT", field: "dst_ints" },
     { key: "dst_fumbles_rec", label: "FR", field: "dst_fumbles_rec" },
     { key: "dst_tds", label: "TD", field: "dst_tds" },
-    { key: "dst_safety", label: "SAF", field: "dst_safety" },
   ],
-  ALL: [
-    { key: "proj", label: "FPTS", field: "fantasy_points" },
-  ],
+  ALL: [{ key: "proj", label: "FPTS", field: "fantasy_points" }],
 };
 
 type SortKey = string;
@@ -169,6 +148,7 @@ export default function DraftPage() {
   const [chatMessages, setChatMessages] = useState<any[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [queue, setQueue] = useState<number[]>([]);
+  const [allQueues, setAllQueues] = useState<{ [userId: string]: number[] }>({});
   const [rightPanel, setRightPanel] = useState<"board" | "chat">("board");
   const [mobileTab, setMobileTab] = useState<MobileTab>("players");
   const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
@@ -176,6 +156,7 @@ export default function DraftPage() {
   const [autoPickEnabled, setAutoPickEnabled] = useState(false);
   const [rosterEmailSent, setRosterEmailSent] = useState(false);
   const [positionError, setPositionError] = useState<string | null>(null);
+
   const timerRef = useRef<any>(null);
   const countdownRef = useRef<any>(null);
   const picksRef = useRef<any[]>([]);
@@ -183,10 +164,14 @@ export default function DraftPage() {
   const leagueRef = useRef<any>(null);
   const userRef = useRef<any>(null);
   const playersRef = useRef<any[]>([]);
+  const onlineUserIdsRef = useRef<string[]>([]);
+  const allQueuesRef = useRef<{ [userId: string]: number[] }>({});
   const chatEndRef = useRef<any>(null);
   const wasMyTurnRef = useRef(false);
   const autoPickEnabledRef = useRef(false);
   const pickStartTimeRef = useRef<string | null>(null);
+  const autoPickFiredRef = useRef(false);
+
   const router = useRouter();
   const params = useParams();
   const leagueId = params.id as string;
@@ -197,6 +182,8 @@ export default function DraftPage() {
   useEffect(() => { leagueRef.current = league; }, [league]);
   useEffect(() => { playersRef.current = players; }, [players]);
   useEffect(() => { autoPickEnabledRef.current = autoPickEnabled; }, [autoPickEnabled]);
+  useEffect(() => { onlineUserIdsRef.current = onlineUserIds; }, [onlineUserIds]);
+  useEffect(() => { allQueuesRef.current = allQueues; }, [allQueues]);
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatMessages]);
 
   function getTimeLeftFromServer(pickStartTime: string | null): number {
@@ -206,7 +193,6 @@ export default function DraftPage() {
     return Math.max(0, TIMER_SECONDS - elapsed);
   }
 
-  // Server-side pick insert — bypasses free tier connection limits
   async function savePick(payload: {
     leagueId: string; userId: string; playerId: number;
     pickNumber: number; round: number; pickInRound: number; isAutoPick: boolean;
@@ -216,11 +202,117 @@ export default function DraftPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    if (!res.ok) {
-      const err = await res.json();
-      console.error("Pick save failed:", err);
-    }
+    if (!res.ok) console.error("Pick save failed:", await res.json());
     return res.ok;
+  }
+
+  // Save queue to DB
+  async function saveQueueToDB(userId: string, playerIds: number[]) {
+    // Delete existing queue for this user in this league
+    await supabase.from("draft_queue")
+      .delete()
+      .eq("league_id", leagueId)
+      .eq("user_id", userId);
+
+    if (playerIds.length === 0) return;
+
+    // Insert new queue order
+    await supabase.from("draft_queue").insert(
+      playerIds.map((playerId, i) => ({
+        league_id: leagueId,
+        user_id: userId,
+        player_id: playerId,
+        queue_order: i,
+      }))
+    );
+  }
+
+  // Get best autopick for a user — queue first, then highest projected
+  function getBestAutoPick(userId: string, pickedIds: number[], userPicks: any[]): any {
+    const currentPlayers = playersRef.current;
+    const positionCounts: { [pos: string]: number } = {};
+    userPicks.forEach((p: any) => {
+      const pl = currentPlayers.find((pl: any) => pl.id === p.player_id);
+      if (pl) positionCounts[pl.position] = (positionCounts[pl.position] || 0) + 1;
+    });
+
+    const available = currentPlayers.filter(p =>
+      !pickedIds.includes(p.id) &&
+      (positionCounts[p.position] || 0) < (ROSTER_SLOTS[p.position as keyof typeof ROSTER_SLOTS] || 0)
+    );
+
+    // Check queue first
+    const userQueue = allQueuesRef.current[userId] || [];
+    for (const queuedId of userQueue) {
+      const queued = available.find(p => p.id === queuedId);
+      if (queued) return queued;
+    }
+
+    // Fall back to highest projected
+    return available.sort((a, b) => (b.fantasy_points || 0) - (a.fantasy_points || 0))[0];
+  }
+
+  async function executeAutoPick(userId: string, isOfflinePick = false) {
+    const currentPicks = picksRef.current;
+    const currentMembers = membersRef.current;
+    if (!currentMembers.length) return;
+
+    const pickNumber = currentPicks.length + 1;
+    if (currentPicks.some(p => p.pick_number === pickNumber)) return;
+
+    const numTeams = currentMembers.length;
+    const round = Math.ceil(pickNumber / numTeams);
+    const posInRound = (pickNumber - 1) % numTeams;
+    const index = round % 2 === 0 ? numTeams - 1 - posInRound : posInRound;
+    const owner = currentMembers[index];
+    if (!owner || owner.user_id !== userId) return;
+
+    const pickedIds = currentPicks.map((p: any) => p.player_id);
+    const userPicks = currentPicks.filter((p: any) => p.user_id === userId);
+    const available = getBestAutoPick(userId, pickedIds, userPicks);
+    if (!available) return;
+
+    const pickInRound = ((pickNumber - 1) % numTeams) + 1;
+    const pickStartTime = new Date().toISOString();
+
+    const newPick = {
+      id: `optimistic-auto-${Date.now()}`,
+      league_id: leagueId, user_id: userId,
+      player_id: available.id, pick_number: pickNumber,
+      round, pick_in_round: pickInRound,
+      is_auto_pick: true, pick_start_time: pickStartTime,
+    };
+
+    setPicks(prev => {
+      if (prev.some(p => p.pick_number === pickNumber)) return prev;
+      return [...prev, newPick];
+    });
+    pickStartTimeRef.current = pickStartTime;
+    setTimeLeft(TIMER_SECONDS);
+
+    // Remove picked player from queue if it was queued
+    if (userId === userRef.current?.id) {
+      setQueue(prev => {
+        const updated = prev.filter(id => id !== available.id);
+        saveQueueToDB(userId, updated);
+        return updated;
+      });
+    } else {
+      // Update allQueues for offline user
+      setAllQueues(prev => {
+        const userQueue = (prev[userId] || []).filter(id => id !== available.id);
+        return { ...prev, [userId]: userQueue };
+      });
+    }
+
+    await supabase.channel(`picks-broadcast-${leagueId}`).send({
+      type: "broadcast", event: "pick", payload: newPick,
+    });
+
+    await savePick({
+      leagueId, userId, playerId: available.id,
+      pickNumber, round, pickInRound, isAutoPick: true,
+    });
   }
 
   useEffect(() => {
@@ -242,6 +334,8 @@ export default function DraftPage() {
         .from("draft_picks").select("*").eq("league_id", leagueId).order("pick_number");
       const { data: chatData } = await supabase
         .from("draft_chat_messages").select("*").eq("league_id", leagueId).order("created_at");
+      const { data: queueData } = await supabase
+        .from("draft_queue").select("*").eq("league_id", leagueId).order("queue_order");
 
       const statsMap: { [playerId: number]: any } = {};
       (statsData || []).forEach((s: any) => { statsMap[s.player_id] = s; });
@@ -252,6 +346,13 @@ export default function DraftPage() {
         fantasy_points: parseFloat(statsMap[p.id]?.fantasy_points) || 0,
       }));
 
+      // Build queue map for all users
+      const queuesMap: { [userId: string]: number[] } = {};
+      (queueData || []).forEach((q: any) => {
+        if (!queuesMap[q.user_id]) queuesMap[q.user_id] = [];
+        queuesMap[q.user_id].push(q.player_id);
+      });
+
       setLeague(leagueData);
       leagueRef.current = leagueData;
       setMembers(membersData || []);
@@ -260,6 +361,11 @@ export default function DraftPage() {
       playersRef.current = playersWithStats;
       setPicks(picksData || []);
       picksRef.current = picksData || [];
+      setAllQueues(queuesMap);
+      allQueuesRef.current = queuesMap;
+      // Set my queue from DB
+      const myQueue = queuesMap[user.id] || [];
+      setQueue(myQueue);
       setChatMessages((chatData || []).map((m: any) => ({
         text: m.message, team: m.team_name,
         time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -283,7 +389,9 @@ export default function DraftPage() {
       });
       presenceChannel
         .on("presence", { event: "sync" } as any, () => {
-          setOnlineUserIds(Object.keys(presenceChannel.presenceState()));
+          const online = Object.keys(presenceChannel.presenceState());
+          setOnlineUserIds(online);
+          onlineUserIdsRef.current = online;
         })
         .subscribe(async (status) => {
           if (status === "SUBSCRIBED") {
@@ -304,9 +412,19 @@ export default function DraftPage() {
           })
         .subscribe();
 
+      // Listen for queue updates from other users
+      const queueSub = supabase.channel(`queue-${leagueId}`)
+        .on("broadcast", { event: "queue_update" }, (payload) => {
+          const { userId, queue: updatedQueue } = payload.payload;
+          setAllQueues(prev => ({ ...prev, [userId]: updatedQueue }));
+          allQueuesRef.current = { ...allQueuesRef.current, [userId]: updatedQueue };
+        })
+        .subscribe();
+
       return () => {
         supabase.removeChannel(presenceChannel);
         supabase.removeChannel(leagueSub);
+        supabase.removeChannel(queueSub);
       };
     }
     const cleanup = load();
@@ -323,6 +441,7 @@ export default function DraftPage() {
           pickStartTimeRef.current = pick.pick_start_time;
           setTimeLeft(getTimeLeftFromServer(pick.pick_start_time));
         }
+        autoPickFiredRef.current = false;
       })
       .subscribe();
 
@@ -354,11 +473,12 @@ export default function DraftPage() {
     };
   }, []);
 
-  // Universal timer
+  // Universal timer — fires autopick when clock hits 0
   useEffect(() => {
     if (loading) return;
     if (league?.draft_status !== "IN_PROGRESS") return;
     if (timerRef.current) clearInterval(timerRef.current);
+    autoPickFiredRef.current = false;
 
     timerRef.current = setInterval(() => {
       if (!pickStartTimeRef.current) return;
@@ -368,7 +488,8 @@ export default function DraftPage() {
       if (tl === 10) playUrgentBeep();
       if (tl <= 5 && tl > 0) playTickBeep();
 
-      if (tl <= 0) {
+      if (tl <= 0 && !autoPickFiredRef.current) {
+        autoPickFiredRef.current = true;
         const currentPicks = picksRef.current;
         const currentMembers = membersRef.current;
         const currentUser = userRef.current;
@@ -380,9 +501,11 @@ export default function DraftPage() {
         const posInRound = (pickNumber - 1) % numTeams;
         const index = round % 2 === 0 ? numTeams - 1 - posInRound : posInRound;
         const owner = currentMembers[index];
+        if (!owner) return;
 
-        if (owner?.user_id === currentUser.id) {
-          handleAutoPick();
+        // Only fire autopick if it's our turn
+        if (owner.user_id === currentUser.id) {
+          executeAutoPick(currentUser.id);
         }
       }
     }, 1000);
@@ -390,7 +513,10 @@ export default function DraftPage() {
     return () => clearInterval(timerRef.current);
   }, [loading, league?.draft_status]);
 
-  // On-clock alert
+  // Reset autoPickFiredRef on new pick
+  useEffect(() => { autoPickFiredRef.current = false; }, [picks.length]);
+
+  // On-clock: fire immediately if offline or auto mode on
   useEffect(() => {
     if (loading || league?.draft_status !== "IN_PROGRESS") return;
     const currentPicks = picksRef.current;
@@ -407,8 +533,9 @@ export default function DraftPage() {
 
     if (myTurn && !wasMyTurnRef.current) {
       playOnClockAlert();
+      // Fire immediately if auto mode is on
       if (autoPickEnabledRef.current) {
-        setTimeout(() => handleAutoPick(), 500);
+        setTimeout(() => executeAutoPick(user.id), 300);
       }
     }
     wasMyTurnRef.current = myTurn;
@@ -419,9 +546,7 @@ export default function DraftPage() {
     if (loading) return;
     const isPreDraft = league?.draft_status !== "IN_PROGRESS" && league?.draft_status !== "COMPLETED";
     if (!isPreDraft || !league?.draft_time) { setCountdown(null); return; }
-
     let warnedAt10 = false;
-
     function tick() {
       const target = parseUTCTimestamp(league.draft_time).getTime();
       const diff = target - Date.now();
@@ -447,21 +572,15 @@ export default function DraftPage() {
     return () => { clearInterval(countdownRef.current); setCountdownWarning(false); };
   }, [loading, league?.draft_status, league?.draft_time]);
 
-  // Roster email on draft complete
+  // Draft complete
   useEffect(() => {
     if (loading || !league || !user) return;
     const totalPicks = membersRef.current.length * TOTAL_PICKS_PER_TEAM;
     const isDraftComplete = picks.length >= totalPicks && totalPicks > 0;
-    const isCommissioner = user.id === league.commissioner_user_id;
-    if (isDraftComplete && isCommissioner && !rosterEmailSent) {
+    if (isDraftComplete && !rosterEmailSent && user.id === league.commissioner_user_id) {
       setRosterEmailSent(true);
       supabase.from("leagues").update({ draft_status: "COMPLETED" }).eq("id", leagueId);
       setLeague((prev: any) => ({ ...prev, draft_status: "COMPLETED" }));
-      fetch("/api/draft/send-roster-email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ leagueId, commissionerUserId: user.id }),
-      }).catch(err => console.error("Roster email failed:", err));
     }
   }, [picks, loading, league, user]);
 
@@ -469,10 +588,7 @@ export default function DraftPage() {
     setStartingDraft(true);
     const now = new Date().toISOString();
     pickStartTimeRef.current = now;
-    await supabase.from("leagues").update({
-      draft_status: "IN_PROGRESS",
-      pick_start_time: now,
-    }).eq("id", leagueId);
+    await supabase.from("leagues").update({ draft_status: "IN_PROGRESS", pick_start_time: now }).eq("id", leagueId);
     setLeague((prev: any) => ({ ...prev, draft_status: "IN_PROGRESS", pick_start_time: now }));
     leagueRef.current = { ...leagueRef.current, draft_status: "IN_PROGRESS", pick_start_time: now };
     setTimeLeft(TIMER_SECONDS);
@@ -494,13 +610,8 @@ export default function DraftPage() {
     return round % 2 === 0 ? [...members].reverse() : [...members];
   }
 
-  function isMyTurn() {
-    return getPickOwner(picks.length + 1)?.user_id === user?.id;
-  }
-
-  function isPickedAlready(playerId: number) {
-    return picks.some(p => p.player_id === playerId);
-  }
+  function isMyTurn() { return getPickOwner(picks.length + 1)?.user_id === user?.id; }
+  function isPickedAlready(playerId: number) { return picks.some(p => p.player_id === playerId); }
 
   function getMyRoster() {
     return picks.filter(p => p.user_id === user?.id)
@@ -512,22 +623,27 @@ export default function DraftPage() {
   }
 
   function canDraftPosition(position: string): boolean {
-    const slots = ROSTER_SLOTS[position as keyof typeof ROSTER_SLOTS] || 0;
-    const current = getRosterByPosition(position).length;
-    return current < slots;
+    return getRosterByPosition(position).length < (ROSTER_SLOTS[position as keyof typeof ROSTER_SLOTS] || 0);
   }
 
-  function toggleQueue(playerId: number) {
-    setQueue(prev => prev.includes(playerId) ? prev.filter(id => id !== playerId) : [...prev, playerId]);
+  async function toggleQueue(playerId: number) {
+    const updated = queue.includes(playerId)
+      ? queue.filter(id => id !== playerId)
+      : [...queue, playerId];
+    setQueue(updated);
+    await saveQueueToDB(user.id, updated);
+    // Broadcast queue update to other users
+    await supabase.channel(`queue-${leagueId}`).send({
+      type: "broadcast", event: "queue_update",
+      payload: { userId: user.id, queue: updated },
+    });
+    // Update allQueues locally
+    setAllQueues(prev => ({ ...prev, [user.id]: updated }));
   }
 
   function handleSort(key: SortKey) {
-    if (sortKey === key) {
-      setSortDir(prev => prev === "asc" ? "desc" : "asc");
-    } else {
-      setSortKey(key);
-      setSortDir("desc");
-    }
+    if (sortKey === key) setSortDir(prev => prev === "asc" ? "desc" : "asc");
+    else { setSortKey(key); setSortDir("desc"); }
   }
 
   function SortIcon({ k }: { k: string }) {
@@ -536,13 +652,12 @@ export default function DraftPage() {
   }
 
   function handleLeaveDraft() {
-    if (window.opener) { window.close(); }
-    else { router.push(`/league/${leagueId}`); }
+    if (window.opener) window.close();
+    else router.push(`/league/${leagueId}`);
   }
 
   async function makePick(playerId: number) {
     if (!isMyTurn() || isPreDraft) return;
-
     const player = players.find(p => p.id === playerId);
     if (player && !canDraftPosition(player.position)) {
       setPositionError(`You already have the maximum number of ${player.position}s.`);
@@ -566,82 +681,23 @@ export default function DraftPage() {
     setPicks(prev => [...prev, newPick]);
     pickStartTimeRef.current = pickStartTime;
     setTimeLeft(TIMER_SECONDS);
-    setQueue(prev => prev.filter(id => id !== playerId));
 
-    // Broadcast pick to all browsers instantly
+    // Remove from queue if queued
+    if (queue.includes(playerId)) {
+      const updated = queue.filter(id => id !== playerId);
+      setQueue(updated);
+      await saveQueueToDB(user.id, updated);
+      await supabase.channel(`queue-${leagueId}`).send({
+        type: "broadcast", event: "queue_update",
+        payload: { userId: user.id, queue: updated },
+      });
+    }
+
     await supabase.channel(`picks-broadcast-${leagueId}`).send({
       type: "broadcast", event: "pick", payload: newPick,
     });
 
-    // Save to DB via server-side route — bypasses free tier timeouts
-    await savePick({
-      leagueId, userId: user.id, playerId,
-      pickNumber, round, pickInRound, isAutoPick: false,
-    });
-  }
-
-  async function handleAutoPick() {
-    const currentPicks = picksRef.current;
-    const currentMembers = membersRef.current;
-    const currentUser = userRef.current;
-    const currentPlayers = playersRef.current;
-    if (!currentUser || !currentMembers.length) return;
-
-    const pickNumber = currentPicks.length + 1;
-    const numTeams = currentMembers.length;
-    const round = Math.ceil(pickNumber / numTeams);
-    const posInRound = (pickNumber - 1) % numTeams;
-    const index = round % 2 === 0 ? numTeams - 1 - posInRound : posInRound;
-    const owner = currentMembers[index];
-
-    if (!owner || owner.user_id !== currentUser.id) return;
-    if (currentPicks.some(p => p.pick_number === pickNumber)) return;
-
-    const pickedIds = currentPicks.map((p: any) => p.player_id);
-    const myCurrentPicks = currentPicks.filter((p: any) => p.user_id === currentUser.id);
-    const positionCounts: { [pos: string]: number } = {};
-    myCurrentPicks.forEach((p: any) => {
-      const pl = currentPlayers.find((pl: any) => pl.id === p.player_id);
-      if (pl) positionCounts[pl.position] = (positionCounts[pl.position] || 0) + 1;
-    });
-
-    const available = [...currentPlayers]
-      .filter(p => !pickedIds.includes(p.id))
-      .filter(p => {
-        const limit = ROSTER_SLOTS[p.position as keyof typeof ROSTER_SLOTS] || 0;
-        const current = positionCounts[p.position] || 0;
-        return current < limit;
-      })
-      .sort((a, b) => (b.fantasy_points || 0) - (a.fantasy_points || 0))[0];
-
-    if (!available) return;
-
-    const pickInRound = ((pickNumber - 1) % numTeams) + 1;
-    const pickStartTime = new Date().toISOString();
-
-    const newPick = {
-      id: `optimistic-auto-${Date.now()}`, league_id: leagueId, user_id: owner.user_id,
-      player_id: available.id, pick_number: pickNumber, round, pick_in_round: pickInRound,
-      is_auto_pick: true, pick_start_time: pickStartTime,
-    };
-
-    setPicks(prev => {
-      if (prev.some(p => p.pick_number === pickNumber)) return prev;
-      return [...prev, newPick];
-    });
-    pickStartTimeRef.current = pickStartTime;
-    setTimeLeft(TIMER_SECONDS);
-
-    // Broadcast autopick to all browsers
-    await supabase.channel(`picks-broadcast-${leagueId}`).send({
-      type: "broadcast", event: "pick", payload: newPick,
-    });
-
-    // Save to DB via server-side route
-    await savePick({
-      leagueId, userId: owner.user_id, playerId: available.id,
-      pickNumber, round, pickInRound, isAutoPick: true,
-    });
+    await savePick({ leagueId, userId: user.id, playerId, pickNumber, round, pickInRound, isAutoPick: false });
   }
 
   async function sendChat() {
@@ -665,19 +721,15 @@ export default function DraftPage() {
   const lastPick = picks.length > 0 ? picks[picks.length - 1] : null;
   const lastPickPlayer = lastPick ? players.find(p => p.id === lastPick.player_id) : null;
   const lastPickOwner = lastPick ? members.find(m => m.user_id === lastPick.user_id) : null;
-  const autoPickPlayer = [...players]
-    .filter(p => !isPickedAlready(p.id))
-    .sort((a, b) => (b.fantasy_points || 0) - (a.fantasy_points || 0))[0];
+  const autoPickPlayer = [...players].filter(p => !isPickedAlready(p.id)).sort((a, b) => (b.fantasy_points || 0) - (a.fantasy_points || 0))[0];
   const currentRound = Math.ceil(currentPickNumber / (members.length || 1));
   const isCommissioner = user?.id === league?.commissioner_user_id;
   const isEvenRound = currentRound % 2 === 0;
   const snakeOrderThisRound = getSnakeOrderForRound(currentRound);
   const picksThisRoundCount = picks.filter(p => p.round === currentRound).length;
+  const currentOwnerOnline = currentPickOwner ? onlineUserIds.includes(currentPickOwner.user_id) : true;
 
-  const queuedPlayers = queue
-    .map(id => players.find(p => p.id === id)).filter(Boolean)
-    .filter((p: any) => !isPickedAlready(p.id));
-
+  const queuedPlayers = queue.map(id => players.find(p => p.id === id)).filter(Boolean).filter((p: any) => !isPickedAlready(p.id));
   const statCols = STAT_COLS[positionFilter] || STAT_COLS.ALL;
 
   let filteredPlayers = players.filter(p => {
@@ -686,7 +738,6 @@ export default function DraftPage() {
     if (search && !p.name.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
-
   filteredPlayers = [...filteredPlayers].sort((a, b) => {
     const aVal = parseFloat(a[sortKey]) || 0;
     const bVal = parseFloat(b[sortKey]) || 0;
@@ -695,20 +746,19 @@ export default function DraftPage() {
     return (b.fantasy_points || 0) - (a.fantasy_points || 0);
   });
 
-  const statColWidth = "3rem";
+  const statColWidth = "3.5rem";
   const gridCols = `2rem 2.5rem 1fr ${statCols.map(() => statColWidth).join(" ")} 3.5rem 6rem`;
 
   function renderStat(player: any, col: StatCol): string {
     const val = player[col.field];
     if (val == null) return "—";
     if (col.field === "fantasy_points") return parseFloat(val).toFixed(1);
-    const rounded = Math.round(parseFloat(val));
-    return String(rounded);
+    return String(Math.round(parseFloat(val)));
   }
 
   if (loading) return (
     <main className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
-      <p>Loading draft...</p>
+      <p className="text-gray-400">Loading draft...</p>
     </main>
   );
 
@@ -719,12 +769,12 @@ export default function DraftPage() {
       <div className="bg-gray-900 border-b border-gray-800 flex-shrink-0">
 
         {/* Row 1: Logo + Timer + Controls */}
-        <div className="px-2 sm:px-4 py-2 flex items-center justify-between border-b border-gray-800 gap-2">
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            <PFFLLogo size={28} />
-            <div className="min-w-0">
-              <p className="text-xs text-gray-500 leading-none hidden sm:block">Draft Room</p>
-              <p className="text-xs sm:text-sm font-bold leading-none mt-0.5 truncate max-w-[80px] sm:max-w-none">{league?.name}</p>
+        <div className="px-3 py-2 flex items-center justify-between border-b border-gray-800 gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <PFFLLogo size={24} />
+            <div className="min-w-0 hidden sm:block">
+              <p className="text-xs text-gray-500 leading-none">Draft Room</p>
+              <p className="text-sm font-bold leading-none mt-0.5 truncate">{league?.name}</p>
             </div>
           </div>
 
@@ -732,65 +782,54 @@ export default function DraftPage() {
             {isPreDraft ? (
               countdown ? (
                 <>
-                  <div className={`text-lg sm:text-2xl font-mono font-black transition-colors ${countdownWarning ? "text-red-400 animate-pulse" : "text-blue-400"}`}>
+                  <div className={`text-xl sm:text-3xl font-mono font-black ${countdownWarning ? "text-red-400 animate-pulse" : "text-blue-400"}`}>
                     {countdown.d > 0 && `${countdown.d}d `}
                     {String(countdown.h).padStart(2, "0")}:{String(countdown.m).padStart(2, "0")}:{String(countdown.s).padStart(2, "0")}
                   </div>
-                  <p className={`text-xs whitespace-nowrap ${countdownWarning ? "text-red-400 font-bold" : "text-gray-500"}`}>
-                    {countdownWarning ? "🚨 Draft starting!" : "Until Draft Starts"}
+                  <p className={`text-xs ${countdownWarning ? "text-red-400 font-bold" : "text-gray-500"}`}>
+                    {countdownWarning ? "🚨 Starting!" : "Until Draft"}
                   </p>
                 </>
               ) : (
                 <>
-                  <div className="text-lg sm:text-2xl font-black text-gray-500">⏳</div>
-                  <p className="text-xs text-gray-500 whitespace-nowrap">Not Scheduled</p>
+                  <div className="text-xl font-black text-gray-500">⏳</div>
+                  <p className="text-xs text-gray-500">Not Scheduled</p>
                 </>
               )
             ) : (
               <>
-                <div className={`text-2xl sm:text-4xl font-mono font-black ${timeLeft <= 5 ? "text-red-400 animate-pulse" : timeLeft <= 10 ? "text-orange-400" : "text-green-400"}`}>
+                <div className={`text-3xl sm:text-4xl font-mono font-black leading-none ${timeLeft <= 5 ? "text-red-400 animate-pulse" : timeLeft <= 10 ? "text-orange-400" : "text-green-400"}`}>
                   {draftComplete ? "✅" : `${String(Math.floor(timeLeft / 60)).padStart(2, "0")}:${String(timeLeft % 60).padStart(2, "0")}`}
                 </div>
-                <p className="text-xs text-gray-500 whitespace-nowrap">
-                  {draftComplete ? "Complete" : `Rd ${currentRound} · Pick ${currentPickNumber}/${totalPicks}`}
+                <p className="text-xs text-gray-500">
+                  {draftComplete ? "Complete" : `Rd ${currentRound} · ${currentPickNumber}/${totalPicks}`}
                 </p>
               </>
             )}
           </div>
 
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex items-center gap-1.5 flex-shrink-0">
             {!isPreDraft && !draftComplete && (
-              <button
-                onClick={() => setAutoPickEnabled(prev => !prev)}
-                className={`text-xs font-bold px-2 py-1 rounded border transition-colors whitespace-nowrap ${
-                  autoPickEnabled
-                    ? "bg-yellow-700 border-yellow-600 text-yellow-200"
-                    : "bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700"
-                }`}
-              >
-                {autoPickEnabled ? "🤖 Auto ON" : "🤖 Auto"}
+              <button onClick={() => setAutoPickEnabled(prev => !prev)}
+                className={`text-xs font-bold px-2 py-1.5 rounded border transition-colors ${autoPickEnabled ? "bg-yellow-700 border-yellow-600 text-yellow-200" : "bg-gray-800 border-gray-700 text-gray-400"}`}>
+                {autoPickEnabled ? "🤖 ON" : "🤖"}
               </button>
             )}
             {isPreDraft && isCommissioner && (
-              <button
-                onClick={handleStartDraft}
-                disabled={startingDraft}
-                className="bg-green-600 hover:bg-green-500 disabled:bg-gray-700 text-white text-xs sm:text-sm font-bold px-2 sm:px-3 py-1 rounded transition-colors whitespace-nowrap"
-              >
-                {startingDraft ? "Starting..." : "🏈 Start"}
+              <button onClick={handleStartDraft} disabled={startingDraft}
+                className="bg-green-600 hover:bg-green-500 disabled:bg-gray-700 text-white text-xs font-bold px-3 py-1.5 rounded">
+                {startingDraft ? "..." : "🏈 Start"}
               </button>
             )}
-            <button
-              onClick={handleLeaveDraft}
-              className="text-gray-500 hover:text-white text-xs sm:text-sm border border-gray-700 px-2 sm:px-3 py-1 rounded hover:border-gray-500 transition-colors whitespace-nowrap"
-            >
+            <button onClick={handleLeaveDraft}
+              className="text-gray-500 text-xs border border-gray-700 px-2 py-1.5 rounded hover:border-gray-500">
               Leave
             </button>
           </div>
         </div>
 
         {/* Row 2: Status bar */}
-        <div className={`px-2 sm:px-4 py-2 flex items-center justify-between gap-2 ${
+        <div className={`px-3 py-2 flex items-center justify-between gap-2 ${
           countdownWarning && isPreDraft ? "bg-red-950" :
           isMyTurn() && !draftComplete && !isPreDraft ? "bg-green-900" : ""
         }`}>
@@ -798,21 +837,23 @@ export default function DraftPage() {
             {isPreDraft ? (
               <p className={`text-xs sm:text-sm ${countdownWarning ? "text-red-300 font-bold animate-pulse" : "text-blue-300"}`}>
                 {countdownWarning
-                  ? "🚨 Draft is about to start — get ready!"
-                  : `🔍 Pre-Draft Lobby — browse players, set your queue, and chat. Drafting opens when the clock hits zero${isCommissioner ? " or you hit Start." : "."}`
-                }
+                  ? "🚨 Draft starting — get ready!"
+                  : `🔍 Pre-Draft Lobby${isCommissioner ? " — hit Start to begin." : " — drafting opens when clock hits zero."}`}
               </p>
             ) : draftComplete ? (
-              <p className="font-bold text-green-400 text-sm">🏆 Draft Complete! Roster emails sent to all teams.</p>
+              <p className="font-bold text-green-400 text-sm">🏆 Draft Complete!</p>
             ) : isMyTurn() ? (
               <p className="font-black text-green-300 text-sm sm:text-lg">⚡ You're on the clock!</p>
             ) : (
               <p className="text-gray-300 text-xs sm:text-sm truncate">
-                On the clock: <span className="text-white font-bold">{currentPickOwner?.team_name}</span>
+                On the clock: <span className={`font-bold ${currentOwnerOnline ? "text-white" : "text-gray-500"}`}>
+                  {currentPickOwner?.team_name}
+                </span>
+                {!currentOwnerOnline && <span className="text-gray-600 text-xs ml-1">(offline)</span>}
               </p>
             )}
           </div>
-          <div className="hidden sm:flex gap-8 text-xs flex-shrink-0">
+          <div className="hidden sm:flex gap-6 text-xs flex-shrink-0">
             {!isPreDraft && lastPickPlayer && (
               <div className="text-right">
                 <p className="text-gray-600 uppercase tracking-wider text-xs mb-0.5">Last Pick</p>
@@ -822,15 +863,15 @@ export default function DraftPage() {
             )}
             {!isPreDraft && autoPickPlayer && !draftComplete && (
               <div className="text-right">
-                <p className="text-gray-600 uppercase tracking-wider text-xs mb-0.5">Auto Pick</p>
+                <p className="text-gray-600 uppercase tracking-wider text-xs mb-0.5">Next Auto</p>
                 <p className="text-white font-bold">{autoPickPlayer.name}</p>
                 <p className="text-gray-500">{autoPickPlayer.position} · {autoPickPlayer.nfl_teams?.abbreviation}</p>
               </div>
             )}
             {isPreDraft && (
               <div className="text-right">
-                <p className="text-gray-600 uppercase tracking-wider text-xs mb-0.5">In Draft Room</p>
-                <p className="text-white font-bold">{onlineUserIds.length}/{members.length} Online</p>
+                <p className="text-gray-600 uppercase tracking-wider text-xs mb-0.5">Online</p>
+                <p className="text-white font-bold">{onlineUserIds.length}/{members.length}</p>
               </div>
             )}
           </div>
@@ -844,18 +885,18 @@ export default function DraftPage() {
         )}
 
         {/* Row 3: Snake Order Strip */}
-        <div className="border-t border-gray-800 px-2 sm:px-4 py-2 overflow-x-auto">
+        <div className="border-t border-gray-800 px-3 py-2 overflow-x-auto">
           {isPreDraft ? (
-            <div className="flex items-center gap-1 sm:gap-2 min-w-max">
+            <div className="flex items-center gap-2 min-w-max">
               <p className="text-gray-600 text-xs mr-1 flex-shrink-0">Draft Order:</p>
               {members.map((member, i) => {
                 const isMe = member.user_id === user?.id;
                 const isOnline = onlineUserIds.includes(member.user_id);
                 return (
                   <div key={member.id} className="flex flex-col items-center">
-                    <div className={`relative w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-xs font-black ${isMe ? "bg-green-600" : "bg-gray-700"} ${!isOnline ? "opacity-40" : ""}`}>
+                    <div className={`relative w-8 h-8 rounded-full flex items-center justify-center text-xs font-black ${isMe ? "bg-green-600" : "bg-gray-700"} ${!isOnline ? "opacity-40" : ""}`}>
                       {member.team_name.charAt(0).toUpperCase()}
-                      {isOnline && <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 rounded-full border border-gray-900" />}
+                      {isOnline && <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-green-500 rounded-full border border-gray-900" />}
                     </div>
                     <p className="text-xs text-gray-500 mt-0.5 font-mono">{i + 1}</p>
                   </div>
@@ -870,26 +911,29 @@ export default function DraftPage() {
                 <p className="text-gray-500 text-xs font-bold">Rd {currentRound}</p>
                 <p className="text-gray-600 text-xs">{isEvenRound ? "←" : "→"}</p>
               </div>
-              {snakeOrderThisRound.map((member, positionInRound) => {
+              {snakeOrderThisRound.map((member, posInRound) => {
                 const isOnClock = member.user_id === currentPickOwner?.user_id;
                 const isNext = member.user_id === nextPickOwner?.user_id && !isOnClock;
                 const isMe = member.user_id === user?.id;
-                const hasPicked = positionInRound < picksThisRoundCount;
+                const hasPicked = posInRound < picksThisRoundCount;
+                const isOffline = !onlineUserIds.includes(member.user_id);
                 const memberTotalPicks = picks.filter(p => p.user_id === member.user_id).length;
                 return (
                   <div key={member.id} className="flex flex-col items-center">
                     <p className={`text-xs font-mono mb-0.5 ${isOnClock ? "text-yellow-400 font-bold" : isNext ? "text-gray-400" : "text-gray-700"}`}>
-                      {(currentRound - 1) * members.length + positionInRound + 1}
+                      {(currentRound - 1) * members.length + posInRound + 1}
                     </p>
-                    <div className={`relative w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-xs font-black transition-all ${isMe ? "bg-green-600" : "bg-gray-700"} ${
+                    <div className={`relative w-8 h-8 rounded-full flex items-center justify-center text-xs font-black transition-all ${isMe ? "bg-green-600" : "bg-gray-700"} ${
                       isOnClock ? "ring-2 ring-yellow-400 ring-offset-1 ring-offset-gray-900 scale-110"
                         : isNext ? "ring-1 ring-gray-500 ring-offset-1 ring-offset-gray-900"
                         : hasPicked ? "opacity-30" : "opacity-70"
                     }`}>
                       {member.team_name.charAt(0).toUpperCase()}
-                      {isOnClock && <span className="absolute -top-1 left-1/2 -translate-x-1/2 text-yellow-400 text-xs leading-none">▼</span>}
+                      {isOnClock && !isOffline && <span className="absolute -top-1 left-1/2 -translate-x-1/2 text-yellow-400 text-xs leading-none">▼</span>}
+                      {isOffline && <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-gray-600 rounded-full border border-gray-900" title="Offline" />}
+                      {isOnClock && isOffline && <span className="absolute -top-1 left-1/2 -translate-x-1/2 text-gray-500 text-xs leading-none">▼</span>}
                     </div>
-                    <p className={`text-xs mt-0.5 truncate max-w-12 sm:max-w-16 text-center ${isOnClock ? "text-yellow-300 font-bold" : isNext ? "text-gray-400" : "text-gray-600"}`}>
+                    <p className={`text-xs mt-0.5 truncate max-w-10 text-center ${isOnClock ? isOffline ? "text-gray-500" : "text-yellow-300 font-bold" : isNext ? "text-gray-400" : "text-gray-600"}`}>
                       {member.team_name.split(" ")[0]}
                     </p>
                     <p className="text-xs text-gray-700 font-mono">{memberTotalPicks}</p>
@@ -904,8 +948,8 @@ export default function DraftPage() {
         <div className="md:hidden flex border-t border-gray-800">
           {(["roster", "players", "board"] as MobileTab[]).map(tab => (
             <button key={tab} onClick={() => setMobileTab(tab)}
-              className={`flex-1 py-2 text-xs font-bold border-b-2 transition-colors capitalize ${mobileTab === tab ? "text-green-400 border-green-500 bg-gray-800" : "text-gray-500 border-transparent"}`}>
-              {tab === "board" ? "Board / Chat" : tab === "roster" ? "My Roster" : "Players"}
+              className={`flex-1 py-2.5 text-xs font-bold border-b-2 transition-colors capitalize ${mobileTab === tab ? "text-green-400 border-green-500 bg-gray-800" : "text-gray-500 border-transparent"}`}>
+              {tab === "board" ? "Board" : tab === "roster" ? "My Roster" : "Players"}
             </button>
           ))}
         </div>
@@ -915,16 +959,16 @@ export default function DraftPage() {
       <div className="flex flex-1 overflow-hidden">
 
         {/* LEFT PANEL: My Roster */}
-        <div className={`${mobileTab === "roster" ? "flex" : "hidden"} md:flex w-full md:w-52 flex-shrink-0 bg-gray-900 md:border-r border-gray-800 flex-col`}>
+        <div className={`${mobileTab === "roster" ? "flex" : "hidden"} md:flex w-full md:w-48 flex-shrink-0 bg-gray-900 md:border-r border-gray-800 flex-col`}>
           <div className="px-3 py-2 border-b border-gray-800 flex-shrink-0">
             <p className="text-xs font-black text-gray-400 uppercase tracking-wider">
               My Roster ({getMyRoster().length}/{TOTAL_PICKS_PER_TEAM})
             </p>
           </div>
-          <div className="overflow-y-auto flex-1 px-2 py-2 pb-6">
+          <div className="overflow-y-auto flex-1 px-2 py-2 pb-20">
             {isPreDraft && (
               <p className="text-gray-600 text-xs text-center mt-4 mb-4 px-2">
-                Your roster will fill up once the draft begins. Use this time to set your player queue!
+                Draft starts soon — browse players and set your queue!
               </p>
             )}
             {Object.entries(ROSTER_SLOTS).map(([pos, slots]) => (
@@ -954,16 +998,16 @@ export default function DraftPage() {
           {/* Queue */}
           {queuedPlayers.length > 0 && (
             <div className="bg-blue-950 border-b border-blue-800 px-3 py-2 flex-shrink-0">
-              <p className="text-xs font-bold text-blue-300 mb-1">Queue ({queuedPlayers.length})</p>
+              <p className="text-xs font-bold text-blue-300 mb-1">Queue ({queuedPlayers.length}) — picks first available if you go auto</p>
               <div className="flex gap-2 overflow-x-auto pb-1">
                 {queuedPlayers.map((player: any) => (
-                  <div key={player.id} className="flex items-center gap-2 bg-blue-900 rounded px-2 py-1 flex-shrink-0">
+                  <div key={player.id} className="flex items-center gap-1.5 bg-blue-900 rounded px-2 py-1.5 flex-shrink-0">
+                    <span className={`text-xs font-black px-1 py-0.5 rounded ${getPositionBadge(player.position)}`}>{player.position}</span>
                     <span className="text-xs font-bold text-white">{player.name}</span>
-                    <span className="text-xs text-blue-300">{player.position}</span>
                     {isMyTurn() && !isPreDraft && (
-                      <button onClick={() => makePick(player.id)} className="bg-green-600 text-white text-xs px-2 py-0.5 rounded font-bold">Draft</button>
+                      <button onClick={() => makePick(player.id)} className="bg-green-600 text-white text-xs px-2 py-0.5 rounded font-bold ml-1">Draft</button>
                     )}
-                    <button onClick={() => toggleQueue(player.id)} className="text-blue-400 hover:text-white text-xs">✕</button>
+                    <button onClick={() => toggleQueue(player.id)} className="text-blue-400 text-xs ml-1">✕</button>
                   </div>
                 ))}
               </div>
@@ -975,21 +1019,20 @@ export default function DraftPage() {
             <div className="flex gap-2 mb-2">
               <input type="text" placeholder="Search players..." value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="bg-gray-800 text-white p-2 rounded text-sm flex-1 border border-gray-700 focus:outline-none focus:border-green-500"
+                className="bg-gray-800 text-white px-3 py-2 rounded text-sm flex-1 border border-gray-700 focus:outline-none focus:border-green-500 min-w-0"
               />
               <button onClick={() => setShowAvailableOnly(!showAvailableOnly)}
-                className={`px-3 py-2 rounded text-xs font-bold border whitespace-nowrap ${showAvailableOnly ? "bg-green-700 border-green-600 text-white" : "bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700"}`}>
-                {showAvailableOnly ? "✓ Available" : "All Players"}
+                className={`px-2 py-2 rounded text-xs font-bold border whitespace-nowrap flex-shrink-0 ${showAvailableOnly ? "bg-green-700 border-green-600 text-white" : "bg-gray-800 border-gray-700 text-gray-300"}`}>
+                {showAvailableOnly ? "✓ Avail" : "All"}
               </button>
             </div>
             <div className="flex gap-1 flex-wrap">
               {["ALL", "QB", "RB", "WR", "TE", "K", "DST"].map(pos => {
                 const slots = ROSTER_SLOTS[pos as keyof typeof ROSTER_SLOTS] || 0;
-                const filled = pos === "ALL" ? 0 : getRosterByPosition(pos).length;
-                const full = pos !== "ALL" && filled >= slots;
+                const full = pos !== "ALL" && getRosterByPosition(pos).length >= slots;
                 return (
                   <button key={pos} onClick={() => { setPositionFilter(pos); setSortKey("fantasy_points"); setSortDir("desc"); }}
-                    className={`px-2 py-1 rounded text-xs font-bold relative ${positionFilter === pos ? "bg-green-600 text-white" : full ? "bg-gray-800 text-green-400 ring-1 ring-green-700" : "bg-gray-800 text-gray-400 hover:bg-gray-700"}`}>
+                    className={`px-2 py-1 rounded text-xs font-bold relative ${positionFilter === pos ? "bg-green-600 text-white" : full ? "bg-gray-800 text-green-400 ring-1 ring-green-700" : "bg-gray-800 text-gray-400"}`}>
                     {pos}
                     {full && <span className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full" />}
                   </button>
@@ -998,7 +1041,7 @@ export default function DraftPage() {
             </div>
           </div>
 
-          {/* Column Headers */}
+          {/* Desktop Column Headers */}
           <div className="hidden md:block border-b border-gray-800 bg-gray-900 flex-shrink-0 overflow-x-auto">
             <div className="grid text-xs text-gray-500 font-bold uppercase px-3 py-1.5 min-w-max items-center"
               style={{ gridTemplateColumns: gridCols }}>
@@ -1017,7 +1060,9 @@ export default function DraftPage() {
           </div>
 
           {/* Player Rows */}
-          <div className="overflow-y-auto flex-1 pb-6">
+          <div className="overflow-y-auto flex-1 pb-20 md:pb-6">
+
+            {/* Desktop */}
             <div className="hidden md:block overflow-x-auto">
               {filteredPlayers.map((player, index) => {
                 const picked = isPickedAlready(player.id);
@@ -1044,15 +1089,12 @@ export default function DraftPage() {
                     <div className="flex gap-1 justify-end">
                       {!picked ? (
                         <>
-                          <button onClick={() => toggleQueue(player.id)} title={inQueue ? "Remove from queue" : "Add to queue"}
+                          <button onClick={() => toggleQueue(player.id)}
                             className={`text-xs px-1.5 py-1 rounded ${inQueue ? "bg-blue-700 text-white" : "bg-gray-800 text-gray-500 hover:bg-gray-700"}`}>
                             {inQueue ? "★" : "☆"}
                           </button>
                           {isMyTurn() && !isPreDraft && (
-                            <button
-                              onClick={() => makePick(player.id)}
-                              disabled={positionFull}
-                              title={positionFull ? `${player.position} slots full` : "Draft"}
+                            <button onClick={() => makePick(player.id)} disabled={positionFull}
                               className={`text-xs font-bold px-3 py-1 rounded ${positionFull ? "bg-gray-700 text-gray-500 cursor-not-allowed" : "bg-green-600 hover:bg-green-500 text-white"}`}>
                               {positionFull ? "Full" : "Draft"}
                             </button>
@@ -1067,6 +1109,7 @@ export default function DraftPage() {
               })}
             </div>
 
+            {/* Mobile */}
             <div className="md:hidden">
               {filteredPlayers.map((player, index) => {
                 const picked = isPickedAlready(player.id);
@@ -1074,38 +1117,34 @@ export default function DraftPage() {
                 const positionFull = !canDraftPosition(player.position);
                 return (
                   <div key={player.id}
-                    className={`px-3 py-2.5 border-b border-gray-800 flex items-center gap-2 ${picked ? "opacity-30 bg-gray-950" : "active:bg-gray-900"}`}>
-                    <span className="text-xs text-gray-600 w-5 flex-shrink-0">{index + 1}</span>
+                    className={`px-3 py-3 border-b border-gray-800 flex items-center gap-3 ${picked ? "opacity-30 bg-gray-950" : ""}`}>
+                    <span className="text-xs text-gray-600 w-5 text-center flex-shrink-0">{index + 1}</span>
                     <PlayerAvatar name={player.name} position={player.position} />
                     <div className="flex-1 min-w-0">
                       <p className={`font-bold text-sm truncate ${picked ? "line-through text-gray-500" : "text-white"}`}>{player.name}</p>
                       <p className="text-xs text-gray-500">
-                        {player.nfl_teams?.abbreviation} · {player.fantasy_points ? player.fantasy_points.toFixed(1) + " pts" : "No stats"}
+                        {player.nfl_teams?.abbreviation} · {player.fantasy_points ? <span className="text-blue-400 font-bold">{player.fantasy_points.toFixed(1)}</span> : "No stats"}
                       </p>
                     </div>
-                    <span className={`text-xs font-bold px-1.5 py-0.5 rounded flex-shrink-0 ${getPositionBadge(player.position)}`}>
+                    <span className={`text-xs font-black px-1.5 py-0.5 rounded flex-shrink-0 ${getPositionBadge(player.position)}`}>
                       {player.position}
                     </span>
-                    <div className="flex gap-1 flex-shrink-0">
-                      {!picked ? (
-                        <>
-                          <button onClick={() => toggleQueue(player.id)}
-                            className={`text-xs px-2 py-1.5 rounded ${inQueue ? "bg-blue-700 text-white" : "bg-gray-800 text-gray-500"}`}>
-                            {inQueue ? "★" : "☆"}
+                    {!picked ? (
+                      <div className="flex gap-1.5 flex-shrink-0">
+                        <button onClick={() => toggleQueue(player.id)}
+                          className={`w-9 h-9 rounded flex items-center justify-center text-base ${inQueue ? "bg-blue-700 text-white" : "bg-gray-800 text-gray-500"}`}>
+                          {inQueue ? "★" : "☆"}
+                        </button>
+                        {isMyTurn() && !isPreDraft && (
+                          <button onClick={() => makePick(player.id)} disabled={positionFull}
+                            className={`h-9 px-3 rounded text-xs font-bold ${positionFull ? "bg-gray-700 text-gray-500" : "bg-green-600 text-white"}`}>
+                            {positionFull ? "Full" : "Draft"}
                           </button>
-                          {isMyTurn() && !isPreDraft && (
-                            <button
-                              onClick={() => makePick(player.id)}
-                              disabled={positionFull}
-                              className={`text-xs font-bold px-3 py-1.5 rounded ${positionFull ? "bg-gray-700 text-gray-500 cursor-not-allowed" : "bg-green-600 text-white"}`}>
-                              {positionFull ? "Full" : "Draft"}
-                            </button>
-                          )}
-                        </>
-                      ) : (
-                        <span className="text-xs text-gray-700">Drafted</span>
-                      )}
-                    </div>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-gray-700 flex-shrink-0">Picked</span>
+                    )}
                   </div>
                 );
               })}
@@ -1115,24 +1154,24 @@ export default function DraftPage() {
         </div>
 
         {/* RIGHT PANEL: Board + Chat */}
-        <div className={`${mobileTab === "board" ? "flex" : "hidden"} md:flex w-full md:w-64 flex-shrink-0 bg-gray-900 md:border-l border-gray-800 flex-col`}>
+        <div className={`${mobileTab === "board" ? "flex" : "hidden"} md:flex w-full md:w-60 flex-shrink-0 bg-gray-900 md:border-l border-gray-800 flex-col`}>
           <div className="flex border-b border-gray-800 flex-shrink-0">
             <button onClick={() => setRightPanel("board")}
-              className={`flex-1 py-2 text-xs font-bold border-b-2 transition-colors ${rightPanel === "board" ? "text-green-400 border-green-500" : "text-gray-500 border-transparent hover:text-white"}`}>
+              className={`flex-1 py-2.5 text-xs font-bold border-b-2 transition-colors ${rightPanel === "board" ? "text-green-400 border-green-500" : "text-gray-500 border-transparent"}`}>
               Draft Board
             </button>
             <button onClick={() => setRightPanel("chat")}
-              className={`flex-1 py-2 text-xs font-bold border-b-2 transition-colors ${rightPanel === "chat" ? "text-green-400 border-green-500" : "text-gray-500 border-transparent hover:text-white"}`}>
+              className={`flex-1 py-2.5 text-xs font-bold border-b-2 transition-colors ${rightPanel === "chat" ? "text-green-400 border-green-500" : "text-gray-500 border-transparent"}`}>
               Smack Talk 💬
             </button>
           </div>
 
           {rightPanel === "board" && (
-            <div className="overflow-y-auto flex-1 px-2 py-2 pb-6">
+            <div className="overflow-y-auto flex-1 px-2 py-2 pb-20 md:pb-6">
               {isPreDraft ? (
-                <p className="text-gray-600 text-xs text-center mt-8 px-2">Draft hasn't started yet — picks will appear here once it begins.</p>
+                <p className="text-gray-600 text-xs text-center mt-8 px-2">Picks will appear here once the draft begins.</p>
               ) : picks.length === 0 ? (
-                <p className="text-gray-600 text-xs text-center mt-8">No picks yet — draft is about to begin!</p>
+                <p className="text-gray-600 text-xs text-center mt-8">No picks yet.</p>
               ) : (
                 [...picks].reverse().map((pick) => {
                   const player = players.find(p => p.id === pick.player_id);
@@ -1140,7 +1179,7 @@ export default function DraftPage() {
                   const isMe = pick.user_id === user?.id;
                   return (
                     <div key={pick.id} className={`flex items-center gap-2 px-2 py-2 rounded mb-1 ${isMe ? "bg-green-950 border border-green-900" : "bg-gray-800"}`}>
-                      <span className="text-xs text-gray-600 w-6 text-right flex-shrink-0 font-mono">{pick.pick_number}</span>
+                      <span className="text-xs text-gray-600 w-5 text-right flex-shrink-0 font-mono">{pick.pick_number}</span>
                       {player && <PlayerAvatar name={player.name} position={player.position} />}
                       <div className="min-w-0 flex-1">
                         <p className="text-xs font-bold text-white truncate">{player?.name}</p>
@@ -1151,15 +1190,14 @@ export default function DraftPage() {
                   );
                 })
               )}
-              <div className="h-4" />
             </div>
           )}
 
           {rightPanel === "chat" && (
             <div className="flex flex-col flex-1 overflow-hidden">
-              <div className="overflow-y-auto flex-1 px-3 py-2 pb-2">
+              <div className="overflow-y-auto flex-1 px-3 py-2">
                 {chatMessages.length === 0 ? (
-                  <p className="text-gray-600 text-xs text-center mt-8">No messages yet...<br />Say something!</p>
+                  <p className="text-gray-600 text-xs text-center mt-8">No messages yet — say something!</p>
                 ) : (
                   chatMessages.map((msg, i) => (
                     <div key={i} className="mb-3">
@@ -1178,9 +1216,9 @@ export default function DraftPage() {
                   <input type="text" placeholder="Talk trash..." value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && sendChat()}
-                    className="flex-1 bg-gray-800 text-white p-2 rounded text-xs border border-gray-700 focus:outline-none focus:border-green-500"
+                    className="flex-1 bg-gray-800 text-white px-3 py-2.5 rounded text-sm border border-gray-700 focus:outline-none focus:border-green-500"
                   />
-                  <button onClick={sendChat} className="bg-green-600 hover:bg-green-500 text-white font-bold px-3 py-2 rounded text-xs">Send</button>
+                  <button onClick={sendChat} className="bg-green-600 text-white font-bold px-4 py-2.5 rounded text-sm">Send</button>
                 </div>
               </div>
             </div>
