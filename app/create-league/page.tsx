@@ -123,6 +123,8 @@ export default function CreateLeague() {
               onChange={(e) => handleNumTeamsChange(Number(e.target.value))}
               className="w-full bg-gray-800 text-white p-3 rounded-lg"
             >
+              <option value={2}>2 Teams (testing only)</option>
+              <option value={3}>3 Teams (testing only)</option>
               <option value={4}>4 Teams</option>
               <option value={5}>5 Teams</option>
               <option value={6}>6 Teams</option>
