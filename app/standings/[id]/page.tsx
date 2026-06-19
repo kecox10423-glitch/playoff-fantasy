@@ -27,63 +27,63 @@ const AVATAR_COLORS = [
 function Avatar({ member, size = "md" }: { member: any; size?: "sm" | "md" | "lg" }) {
   const sizeClass = size === "sm" ? "w-7 h-7 text-xs" : size === "lg" ? "w-14 h-14 text-xl" : "w-10 h-10 text-sm";
   const initials = member.team_name
-    .split(" ")
-    .map((w: string) => w[0])
-    .join("")
-    .substring(0, 2)
-    .toUpperCase();
+    .split(" ").map((w: string) => w[0]).join("").substring(0, 2).toUpperCase();
 
   if (member.avatar_url) {
-    return (
-      <img
-        src={member.avatar_url}
-        alt={member.team_name}
-        className={`${sizeClass} rounded-full object-cover flex-shrink-0`}
-      />
-    );
+    return <img src={member.avatar_url} alt={member.team_name} className={`${sizeClass} rounded-full object-cover flex-shrink-0`} />;
   }
 
   const color = AVATAR_COLORS.find(c => c.name === member.avatar_color) || AVATAR_COLORS[0];
-
   return (
-    <div
-      className={`${sizeClass} rounded-full flex items-center justify-center font-black flex-shrink-0`}
-      style={{ backgroundColor: color.hex }}
-    >
+    <div className={`${sizeClass} rounded-full flex items-center justify-center font-black flex-shrink-0`} style={{ backgroundColor: color.hex }}>
       {initials}
     </div>
   );
 }
 
 function StandingsTable({
-  rows,
-  user,
-  members,
-  scores,
-  standings,
+  rows, user, members, scores, picks, players, leagueId, router,
 }: {
-  rows: any[];
-  user: any;
-  members: any[];
-  scores: any[];
-  standings: any[];
+  rows: any[]; user: any; members: any[]; scores: any[];
+  picks: any[]; players: any[]; leagueId: string; router: any;
 }) {
   function getMember(userId: string) {
-    return members.find((m) => m.user_id === userId);
-  }
-
-  function getMemberName(userId: string) {
-    return getMember(userId)?.team_name || "Unknown";
+    return members.find(m => m.user_id === userId);
   }
 
   function getWeekScore(userId: string, week: number) {
-    const score = scores.find((s) => s.user_id === userId && s.week === week);
-    return score ? score.total_points.toFixed(1) : "—";
+    const score = scores.find(s => s.user_id === userId && s.week === week);
+    return score ? parseFloat(score.total_points) : null;
   }
+
+  function getRosterForUser(userId: string) {
+    return picks
+      .filter(p => p.user_id === userId)
+      .map(p => players.find(pl => pl.id === p.player_id))
+      .filter(Boolean);
+  }
+
+  function getPlayersRemaining(userId: string) {
+    return getRosterForUser(userId).filter((p: any) => p?.is_active !== false).length;
+  }
+
+  function getPlayersEliminated(userId: string) {
+    return getRosterForUser(userId).filter((p: any) => p?.is_active === false).length;
+  }
+
+  function getProjected(userId: string, total: number) {
+    // Rough projection: average points per week so far * 4 weeks
+    const weeksWithScores = [1, 2, 3, 4].filter(w => getWeekScore(userId, w) !== null);
+    if (weeksWithScores.length === 0) return null;
+    const avg = total / weeksWithScores.length;
+    return avg * 4;
+  }
+
+  const leaderTotal = rows.length > 0 ? (rows[0].total_points || 0) : 0;
 
   if (rows.length === 0) return (
     <div className="bg-gray-900 rounded-xl p-8 text-center border border-gray-800">
-      <p className="text-gray-500 text-sm">No teams assigned yet.</p>
+      <p className="text-gray-500 text-sm">No teams yet.</p>
     </div>
   );
 
@@ -96,27 +96,44 @@ function StandingsTable({
               <th className="text-left px-4 py-3">Rank</th>
               <th className="text-left px-4 py-3">Team</th>
               <th className="text-right px-3 py-3">WC</th>
-              <th className="text-right px-3 py-3">Div</th>
+              <th className="text-right px-3 py-3">DIV</th>
               <th className="text-right px-3 py-3">CC</th>
               <th className="text-right px-3 py-3">SB</th>
-              <th className="text-right px-4 py-3 text-white">Total</th>
+              <th className="text-right px-3 py-3 text-white">Total</th>
+              <th className="text-right px-3 py-3">PBL</th>
+              <th className="text-right px-3 py-3">PROJ</th>
+              <th className="text-right px-3 py-3">REM</th>
+              <th className="text-right px-4 py-3">ELIM</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((standing, i) => {
-              const isMe = standing.user_id === user?.id;
-              const member = getMember(standing.user_id);
+            {rows.map((row, i) => {
+              const isMe = row.user_id === user?.id;
+              const member = getMember(row.user_id);
+              const total = parseFloat(row.total_points) || 0;
+              const pbl = i === 0 ? null : total - leaderTotal;
+              const proj = getProjected(row.user_id, total);
+              const rem = getPlayersRemaining(row.user_id);
+              const elim = getPlayersEliminated(row.user_id);
+
+              const wc = getWeekScore(row.user_id, 1);
+              const div = getWeekScore(row.user_id, 2);
+              const cc = getWeekScore(row.user_id, 3);
+              const sb = getWeekScore(row.user_id, 4);
+
               return (
                 <tr
-                  key={standing.id}
-                  className={`border-t border-gray-800 ${isMe ? "bg-green-950" : "hover:bg-gray-800"}`}
+                  key={row.user_id}
+                  onClick={() => router.push(`/roster/${leagueId}?team=${row.user_id}`)}
+                  className={`border-t border-gray-800 cursor-pointer transition-colors ${
+                    isMe ? "bg-green-950 hover:bg-green-900" : "hover:bg-gray-800"
+                  }`}
                 >
                   <td className="px-4 py-4">
                     <span className={`font-black text-lg ${
                       i === 0 ? "text-yellow-400" :
                       i === 1 ? "text-gray-300" :
-                      i === 2 ? "text-orange-400" :
-                      "text-gray-600"
+                      i === 2 ? "text-orange-400" : "text-gray-600"
                     }`}>
                       {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i + 1}`}
                     </span>
@@ -124,17 +141,37 @@ function StandingsTable({
                   <td className="px-4 py-4">
                     <div className="flex items-center gap-2">
                       {member && <Avatar member={member} size="sm" />}
-                      <span className={`font-bold ${isMe ? "text-green-400" : "text-white"}`}>
-                        {getMemberName(standing.user_id)}
-                      </span>
-                      {isMe && <span className="text-xs text-gray-500">(You)</span>}
+                      <div>
+                        <span className={`font-bold ${isMe ? "text-green-400" : "text-white"}`}>
+                          {member?.team_name || "Unknown"}
+                        </span>
+                        {isMe && <span className="text-xs text-gray-500 ml-1">(You)</span>}
+                      </div>
                     </div>
                   </td>
-                  <td className="px-3 py-4 text-right text-gray-300 text-sm">{getWeekScore(standing.user_id, 1)}</td>
-                  <td className="px-3 py-4 text-right text-gray-300 text-sm">{getWeekScore(standing.user_id, 2)}</td>
-                  <td className="px-3 py-4 text-right text-gray-300 text-sm">{getWeekScore(standing.user_id, 3)}</td>
-                  <td className="px-3 py-4 text-right text-gray-300 text-sm">{getWeekScore(standing.user_id, 4)}</td>
-                  <td className="px-4 py-4 text-right font-black text-green-400 text-lg">{standing.total_points.toFixed(1)}</td>
+                  <td className="px-3 py-4 text-right text-gray-300 text-sm">{wc != null ? wc.toFixed(1) : "—"}</td>
+                  <td className="px-3 py-4 text-right text-gray-300 text-sm">{div != null ? div.toFixed(1) : "—"}</td>
+                  <td className="px-3 py-4 text-right text-gray-300 text-sm">{cc != null ? cc.toFixed(1) : "—"}</td>
+                  <td className="px-3 py-4 text-right text-gray-300 text-sm">{sb != null ? sb.toFixed(1) : "—"}</td>
+                  <td className="px-3 py-4 text-right font-black text-green-400 text-lg">{total.toFixed(1)}</td>
+                  <td className="px-3 py-4 text-right text-sm">
+                    {pbl === null
+                      ? <span className="text-yellow-400 font-bold">—</span>
+                      : <span className="text-red-400">{pbl.toFixed(1)}</span>
+                    }
+                  </td>
+                  <td className="px-3 py-4 text-right text-sm">
+                    {proj != null
+                      ? <span className="text-blue-400">{proj.toFixed(1)}</span>
+                      : <span className="text-gray-600">—</span>
+                    }
+                  </td>
+                  <td className="px-3 py-4 text-right text-sm">
+                    <span className="text-green-400 font-bold">{rem}</span>
+                  </td>
+                  <td className="px-4 py-4 text-right text-sm">
+                    <span className={elim > 0 ? "text-red-400" : "text-gray-600"}>{elim}</span>
+                  </td>
                 </tr>
               );
             })}
@@ -150,6 +187,8 @@ export default function StandingsPage() {
   const [members, setMembers] = useState<any[]>([]);
   const [standings, setStandings] = useState<any[]>([]);
   const [scores, setScores] = useState<any[]>([]);
+  const [picks, setPicks] = useState<any[]>([]);
+  const [players, setPlayers] = useState<any[]>([]);
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
@@ -162,40 +201,58 @@ export default function StandingsPage() {
       if (!user) { router.push("/login"); return; }
       setUser(user);
 
-      const { data: leagueData } = await supabase
-        .from("leagues").select("*").eq("id", leagueId).single();
-
-      const { data: membersData } = await supabase
-        .from("league_members").select("*").eq("league_id", leagueId);
-
-      const { data: standingsData } = await supabase
-        .from("standings").select("*").eq("league_id", leagueId)
-        .order("total_points", { ascending: false });
-
-      const { data: scoresData } = await supabase
-        .from("scores").select("*").eq("league_id", leagueId);
+      const [
+        { data: leagueData },
+        { data: membersData },
+        { data: standingsData },
+        { data: scoresData },
+        { data: picksData },
+        { data: playersData },
+      ] = await Promise.all([
+        supabase.from("leagues").select("*").eq("id", leagueId).single(),
+        supabase.from("league_members").select("*").eq("league_id", leagueId),
+        supabase.from("standings").select("*").eq("league_id", leagueId).order("total_points", { ascending: false }),
+        supabase.from("scores").select("*").eq("league_id", leagueId),
+        supabase.from("draft_picks").select("*").eq("league_id", leagueId),
+        supabase.from("players").select("*, nfl_teams(name, abbreviation, seed, is_eliminated)").eq("season", 2026),
+      ]);
 
       setLeague(leagueData);
       setMembers(membersData || []);
-      setStandings(standingsData || []);
+      setPlayers(playersData || []);
+      setPicks(picksData || []);
       setScores(scoresData || []);
+
+      // Build rows for ALL members, merging standings data where it exists
+      const allMembers = membersData || [];
+      const standingsMap: { [userId: string]: any } = {};
+      (standingsData || []).forEach((s: any) => { standingsMap[s.user_id] = s; });
+
+      const allRows = allMembers.map(m => ({
+        user_id: m.user_id,
+        total_points: standingsMap[m.user_id]?.total_points || 0,
+        week_1_points: standingsMap[m.user_id]?.week_1_points || 0,
+        week_2_points: standingsMap[m.user_id]?.week_2_points || 0,
+        week_3_points: standingsMap[m.user_id]?.week_3_points || 0,
+        week_4_points: standingsMap[m.user_id]?.week_4_points || 0,
+      })).sort((a, b) => b.total_points - a.total_points);
+
+      setStandings(allRows);
       setLoading(false);
     }
     load();
   }, []);
-
-  function getMemberConference(userId: string) {
-    return members.find((m) => m.user_id === userId)?.conference || null;
-  }
 
   const isCommissioner = user?.id === league?.commissioner_user_id;
   const conferenceEnabled = league?.conference_enabled;
   const confAName = league?.conference_a_name || "AFC";
   const confBName = league?.conference_b_name || "NFC";
 
-  const confAStandings = standings.filter((s) => getMemberConference(s.user_id) === "A");
-  const confBStandings = standings.filter((s) => getMemberConference(s.user_id) === "B");
-  const unassigned = standings.filter((s) => !getMemberConference(s.user_id));
+  function getMemberConference(userId: string) {
+    return members.find(m => m.user_id === userId)?.conference || null;
+  }
+
+  const tableProps = { user, members, scores, picks, players, leagueId, router };
 
   if (loading) return (
     <main className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
@@ -203,7 +260,9 @@ export default function StandingsPage() {
     </main>
   );
 
-  const tableProps = { user, members, scores, standings };
+  const confAStandings = standings.filter(s => getMemberConference(s.user_id) === "A");
+  const confBStandings = standings.filter(s => getMemberConference(s.user_id) === "B");
+  const unassigned = standings.filter(s => !getMemberConference(s.user_id));
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
@@ -214,44 +273,36 @@ export default function StandingsPage() {
         activePage="standings"
       />
 
-      <div className="max-w-4xl mx-auto px-4 py-8">
+      <div className="max-w-5xl mx-auto px-4 py-8">
         <h1 className="text-2xl font-black mb-1">{league?.name}</h1>
-        <p className="text-gray-400 text-sm mb-8">Standings · Updates after each playoff week</p>
+        <p className="text-gray-400 text-sm mb-2">Standings · Updates after each playoff week</p>
+        <p className="text-gray-600 text-xs mb-8">Click any team to view their roster →</p>
 
-        {standings.length === 0 ? (
-          <div className="bg-gray-900 rounded-xl p-12 text-center border border-gray-800">
-            <p className="text-4xl mb-4">🏆</p>
-            <p className="text-gray-300 text-lg font-bold mb-2">No scores yet</p>
-            <p className="text-gray-500 text-sm">Standings update automatically after each playoff week.</p>
-          </div>
-        ) : conferenceEnabled ? (
+        {conferenceEnabled ? (
           <div className="flex flex-col gap-10">
             <div>
               <div className="flex items-center gap-3 mb-4">
-                <h2 className="text-xl font-black text-white">{confAName}</h2>
+                <h2 className="text-xl font-black">{confAName}</h2>
                 <span className="text-xs bg-blue-900 text-blue-300 px-2 py-1 rounded-full font-bold">Conference</span>
               </div>
               <StandingsTable rows={confAStandings} {...tableProps} />
             </div>
-
             <div>
               <div className="flex items-center gap-3 mb-4">
-                <h2 className="text-xl font-black text-white">{confBName}</h2>
+                <h2 className="text-xl font-black">{confBName}</h2>
                 <span className="text-xs bg-purple-900 text-purple-300 px-2 py-1 rounded-full font-bold">Conference</span>
               </div>
               <StandingsTable rows={confBStandings} {...tableProps} />
             </div>
-
             {unassigned.length > 0 && (
               <div>
                 <h2 className="text-lg font-black text-gray-500 mb-4">Unassigned</h2>
                 <StandingsTable rows={unassigned} {...tableProps} />
               </div>
             )}
-
             <div>
               <div className="flex items-center gap-3 mb-4">
-                <h2 className="text-xl font-black text-white">Overall</h2>
+                <h2 className="text-xl font-black">Overall</h2>
                 <span className="text-xs bg-green-900 text-green-400 px-2 py-1 rounded-full font-bold">All Teams</span>
               </div>
               <StandingsTable rows={standings} {...tableProps} />

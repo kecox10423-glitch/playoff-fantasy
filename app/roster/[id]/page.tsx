@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 import Nav from "../../components/Nav";
 
 const supabase = createClient(
@@ -26,57 +26,17 @@ const AVATAR_COLORS = [
 
 function Avatar({ member, size = "md" }: { member: any; size?: "sm" | "md" | "lg" }) {
   const sizeClass = size === "sm" ? "w-8 h-8 text-xs" : size === "lg" ? "w-14 h-14 text-xl" : "w-10 h-10 text-sm";
-  const initials = member.team_name
-    .split(" ")
-    .map((w: string) => w[0])
-    .join("")
-    .substring(0, 2)
-    .toUpperCase();
-
+  const initials = member.team_name.split(" ").map((w: string) => w[0]).join("").substring(0, 2).toUpperCase();
   if (member.avatar_url) {
-    return (
-      <img
-        src={member.avatar_url}
-        alt={member.team_name}
-        className={`${sizeClass} rounded-full object-cover flex-shrink-0`}
-      />
-    );
+    return <img src={member.avatar_url} alt={member.team_name} className={`${sizeClass} rounded-full object-cover flex-shrink-0`} />;
   }
-
   const color = AVATAR_COLORS.find(c => c.name === member.avatar_color) || AVATAR_COLORS[0];
-
   return (
-    <div
-      className={`${sizeClass} rounded-full flex items-center justify-center font-black flex-shrink-0`}
-      style={{ backgroundColor: color.hex }}
-    >
+    <div className={`${sizeClass} rounded-full flex items-center justify-center font-black flex-shrink-0`} style={{ backgroundColor: color.hex }}>
       {initials}
     </div>
   );
 }
-
-const POSITION_GROUPS = [
-  {
-    label: "QUARTERBACKS",
-    positions: ["QB"],
-    statCols: ["COMP/ATT", "PASS YDS", "PASS TD", "INT", "RUSH YDS", "RUSH TD", "FPTS"],
-  },
-  {
-    label: "BACKS & RECEIVERS",
-    positions: ["RB", "WR", "TE"],
-    statCols: ["CAR", "RUSH YDS", "RUSH TD", "REC", "REC YDS", "REC TD", "FPTS"],
-  },
-  {
-    label: "KICKERS",
-    positions: ["K"],
-    statCols: ["FG MADE", "FG ATT", "XP MADE", "XP ATT", "LONG", "PCT", "FPTS"],
-  },
-  {
-    label: "DEFENSE / SPECIAL TEAMS",
-    positions: ["DST"],
-    statCols: ["SACKS", "INT", "FR", "TD", "PA", "YDS ALLOW", "FPTS"],
-  },
-];
 
 function getPositionBadge(position: string) {
   switch (position) {
@@ -90,19 +50,112 @@ function getPositionBadge(position: string) {
   }
 }
 
+function fmt(val: any, decimals = 0): string {
+  if (val == null || val === "") return "—";
+  const n = parseFloat(val);
+  if (isNaN(n)) return "—";
+  return decimals > 0 ? n.toFixed(decimals) : String(Math.round(n));
+}
+
+// Position group definitions with stat columns
+const POSITION_GROUPS = [
+  {
+    label: "QUARTERBACKS",
+    positions: ["QB"],
+    cols: [
+      { header: "CMP", fn: (s: any) => fmt(s?.pass_completions) },
+      { header: "ATT", fn: (s: any) => fmt(s?.pass_attempts) },
+      { header: "PYDS", fn: (s: any) => fmt(s?.pass_yards) },
+      { header: "PTD", fn: (s: any) => fmt(s?.pass_tds) },
+      { header: "INT", fn: (s: any) => fmt(s?.interceptions) },
+      { header: "RYDS", fn: (s: any) => fmt(s?.rush_yards) },
+      { header: "RTD", fn: (s: any) => fmt(s?.rush_tds) },
+      { header: "FPTS", fn: (s: any) => fmt(s?.fantasy_points, 1), highlight: true },
+    ],
+  },
+  {
+    label: "RUNNING BACKS",
+    positions: ["RB"],
+    cols: [
+      { header: "CAR", fn: (s: any) => fmt(s?.rush_attempts) },
+      { header: "RYDS", fn: (s: any) => fmt(s?.rush_yards) },
+      { header: "RTD", fn: (s: any) => fmt(s?.rush_tds) },
+      { header: "REC", fn: (s: any) => fmt(s?.receptions) },
+      { header: "RECYDS", fn: (s: any) => fmt(s?.rec_yards) },
+      { header: "RECTD", fn: (s: any) => fmt(s?.rec_tds) },
+      { header: "FPTS", fn: (s: any) => fmt(s?.fantasy_points, 1), highlight: true },
+    ],
+  },
+  {
+    label: "WIDE RECEIVERS",
+    positions: ["WR"],
+    cols: [
+      { header: "TGT", fn: (s: any) => fmt(s?.rec_first_downs) },
+      { header: "REC", fn: (s: any) => fmt(s?.receptions) },
+      { header: "RECYDS", fn: (s: any) => fmt(s?.rec_yards) },
+      { header: "RECTD", fn: (s: any) => fmt(s?.rec_tds) },
+      { header: "RYDS", fn: (s: any) => fmt(s?.rush_yards) },
+      { header: "RTD", fn: (s: any) => fmt(s?.rush_tds) },
+      { header: "FPTS", fn: (s: any) => fmt(s?.fantasy_points, 1), highlight: true },
+    ],
+  },
+  {
+    label: "TIGHT ENDS",
+    positions: ["TE"],
+    cols: [
+      { header: "REC", fn: (s: any) => fmt(s?.receptions) },
+      { header: "RECYDS", fn: (s: any) => fmt(s?.rec_yards) },
+      { header: "RECTD", fn: (s: any) => fmt(s?.rec_tds) },
+      { header: "FPTS", fn: (s: any) => fmt(s?.fantasy_points, 1), highlight: true },
+    ],
+  },
+  {
+    label: "KICKERS",
+    positions: ["K"],
+    cols: [
+      { header: "FGM", fn: (s: any) => fmt(s?.fg_made) },
+      { header: "FGA", fn: (s: any) => fmt(s?.fg_attempts) },
+      { header: "0-39", fn: (s: any) => fmt(s?.fg_0_39) },
+      { header: "40-49", fn: (s: any) => fmt(s?.fg_40_49) },
+      { header: "50+", fn: (s: any) => fmt(s?.fg_50_plus) },
+      { header: "XPM", fn: (s: any) => fmt(s?.xp_made) },
+      { header: "XPA", fn: (s: any) => fmt(s?.pat_attempts) },
+      { header: "FPTS", fn: (s: any) => fmt(s?.fantasy_points, 1), highlight: true },
+    ],
+  },
+  {
+    label: "DEFENSE / SPECIAL TEAMS",
+    positions: ["DST"],
+    cols: [
+      { header: "SK", fn: (s: any) => fmt(s?.dst_sacks) },
+      { header: "INT", fn: (s: any) => fmt(s?.dst_ints) },
+      { header: "FR", fn: (s: any) => fmt(s?.dst_fumbles_rec) },
+      { header: "SAF", fn: (s: any) => fmt(s?.dst_safety) },
+      { header: "TK", fn: (s: any) => fmt(s?.dst_tackles) },
+      { header: "PA", fn: (s: any) => fmt(s?.dst_points_allowed) },
+      { header: "FPTS", fn: (s: any) => fmt(s?.fantasy_points, 1), highlight: true },
+    ],
+  },
+];
+
+const WEEK_LABELS: { [k: number]: string } = {
+  1: "Wild Card", 2: "Divisional", 3: "Conf. Championship", 4: "Super Bowl",
+};
+
 export default function RosterPage() {
   const [league, setLeague] = useState<any>(null);
   const [members, setMembers] = useState<any[]>([]);
   const [players, setPlayers] = useState<any[]>([]);
   const [picks, setPicks] = useState<any[]>([]);
-  const [scores, setScores] = useState<any[]>([]);
+  const [allStats, setAllStats] = useState<any[]>([]);
   const [user, setUser] = useState<any>(null);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"playoff" | "season">("playoff");
+  const [activeTab, setActiveTab] = useState<"playoff" | "season">("season");
   const [selectedWeek, setSelectedWeek] = useState<number>(1);
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const leagueId = params.id as string;
 
   useEffect(() => {
@@ -110,31 +163,32 @@ export default function RosterPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.push("/login"); return; }
       setUser(user);
-      setSelectedUserId(user.id);
 
-      const { data: leagueData } = await supabase
-        .from("leagues").select("*").eq("id", leagueId).single();
+      // Check for ?team= query param (coming from standings click)
+      const teamParam = searchParams.get("team");
 
-      const { data: membersData } = await supabase
-        .from("league_members").select("*").eq("league_id", leagueId)
-        .order("draft_position");
-
-      const { data: playersData } = await supabase
-        .from("players")
-        .select("*, nfl_teams(name, abbreviation, seed, is_eliminated)")
-        .eq("season", 2026);
-
-      const { data: picksData } = await supabase
-        .from("draft_picks").select("*").eq("league_id", leagueId);
-
-      const { data: scoresData } = await supabase
-        .from("player_stats").select("*").eq("season", 2026);
+      const [
+        { data: leagueData },
+        { data: membersData },
+        { data: playersData },
+        { data: picksData },
+        { data: statsData },
+      ] = await Promise.all([
+        supabase.from("leagues").select("*").eq("id", leagueId).single(),
+        supabase.from("league_members").select("*").eq("league_id", leagueId).order("draft_position"),
+        supabase.from("players").select("*, nfl_teams(name, abbreviation, seed, is_eliminated)").eq("season", 2026),
+        supabase.from("draft_picks").select("*").eq("league_id", leagueId),
+        supabase.from("player_stats").select("*").eq("season", 2026),
+      ]);
 
       setLeague(leagueData);
       setMembers(membersData || []);
       setPlayers(playersData || []);
       setPicks(picksData || []);
-      setScores(scoresData || []);
+      setAllStats(statsData || []);
+
+      // Default to team from URL param, otherwise current user
+      setSelectedUserId(teamParam || user.id);
       setLoading(false);
     }
     load();
@@ -143,96 +197,35 @@ export default function RosterPage() {
   function getRosterForUser(userId: string) {
     return picks
       .filter(p => p.user_id === userId)
-      .map(p => players.find(pl => pl.id === p.player_id))
+      .map(p => {
+        const player = players.find(pl => pl.id === p.player_id);
+        const pick = picks.find(pk => pk.user_id === userId && pk.player_id === p.player_id);
+        return player ? { ...player, round: pick?.round, pick_number: pick?.pick_number } : null;
+      })
       .filter(Boolean);
   }
 
-  function getPlayerWeekStats(playerId: number, week: number) {
-    return scores.find(s => s.player_id === playerId && s.week === week) || null;
-  }
-
-  function getPlayerTotal(playerId: number) {
-    const playerScores = scores.filter(s => s.player_id === playerId);
-    if (!playerScores.length) return null;
-    return playerScores.reduce((sum, s) => sum + (s.fantasy_points || 0), 0);
-  }
-
-  function formatVal(val: any) {
-    if (val === null || val === undefined || val === 0) return <span className="text-gray-600">—</span>;
-    return <span className="text-white">{val}</span>;
-  }
-
-  function formatScore(score: number | null) {
-    if (score === null) return <span className="text-gray-600">—</span>;
-    return <span className={score > 0 ? "text-green-400 font-bold" : "text-gray-500"}>{score.toFixed(1)}</span>;
-  }
-
-  function getStatCells(player: any, stats: any) {
-    switch (player.position) {
-      case "QB":
-        return [
-          formatVal(stats ? `${stats.pass_yards ? Math.round(stats.pass_yards / 20) : 0}/${stats.pass_yards || 0}` : null),
-          formatVal(stats?.pass_yards),
-          formatVal(stats?.pass_tds),
-          formatVal(stats?.interceptions),
-          formatVal(stats?.rush_yards),
-          formatVal(stats?.rush_tds),
-          formatScore(stats?.fantasy_points ?? null),
-        ];
-      case "RB":
-        return [
-          formatVal(stats?.rush_yards ? Math.round(stats.rush_yards / 4) : null),
-          formatVal(stats?.rush_yards),
-          formatVal(stats?.rush_tds),
-          formatVal(stats?.receptions),
-          formatVal(stats?.rec_yards),
-          formatVal(stats?.rec_tds),
-          formatScore(stats?.fantasy_points ?? null),
-        ];
-      case "WR":
-      case "TE":
-        return [
-          formatVal(null),
-          formatVal(stats?.rush_yards),
-          formatVal(stats?.rush_tds),
-          formatVal(stats?.receptions),
-          formatVal(stats?.rec_yards),
-          formatVal(stats?.rec_tds),
-          formatScore(stats?.fantasy_points ?? null),
-        ];
-      case "K":
-        return [
-          formatVal(stats?.fg_made),
-          formatVal(stats?.fg_made !== undefined && stats?.fg_made !== null ? stats.fg_made + 1 : null),
-          formatVal(stats?.xp_made),
-          formatVal(stats?.xp_made !== undefined && stats?.xp_made !== null ? stats.xp_made : null),
-          formatVal(null),
-          formatVal(null),
-          formatScore(stats?.fantasy_points ?? null),
-        ];
-      case "DST":
-        return [
-          formatVal(stats?.dst_sacks),
-          formatVal(stats?.dst_ints),
-          formatVal(stats?.dst_fumbles_rec),
-          formatVal(stats?.dst_tds),
-          formatVal(stats?.dst_points_allowed),
-          formatVal(null),
-          formatScore(stats?.fantasy_points ?? null),
-        ];
-      default:
-        return Array(7).fill(<span className="text-gray-600">—</span>);
+  function getStats(playerId: number, week: number | null) {
+    if (week === null) {
+      // Season totals (week=0)
+      return allStats.find(s => s.player_id === playerId && s.week === 0) || null;
     }
+    return allStats.find(s => s.player_id === playerId && s.week === week) || null;
+  }
+
+  function getPlayerSeasonTotal(playerId: number) {
+    // Sum all playoff weeks (1-4)
+    const weekStats = allStats.filter(s => s.player_id === playerId && s.week >= 1 && s.week <= 4);
+    if (weekStats.length === 0) return null;
+    return weekStats.reduce((sum, s) => sum + (parseFloat(s.fantasy_points) || 0), 0);
   }
 
   function getTeamTotal(userId: string) {
     const roster = getRosterForUser(userId);
-    let total = 0;
-    roster.forEach((p: any) => {
-      const playerTotal = getPlayerTotal(p.id);
-      if (playerTotal) total += playerTotal;
-    });
-    return total;
+    return roster.reduce((sum: number, p: any) => {
+      const t = getPlayerSeasonTotal(p.id);
+      return sum + (t || 0);
+    }, 0);
   }
 
   if (loading) return (
@@ -243,20 +236,12 @@ export default function RosterPage() {
 
   const isCommissioner = user?.id === league?.commissioner_user_id;
   const roster = selectedUserId ? getRosterForUser(selectedUserId) : [];
-  const activeCount = roster.filter((p: any) => p.is_active).length;
-  const eliminatedCount = roster.filter((p: any) => !p.is_active).length;
+  const activeCount = roster.filter((p: any) => p?.is_active !== false).length;
+  const eliminatedCount = roster.filter((p: any) => p?.is_active === false).length;
   const teamTotal = selectedUserId ? getTeamTotal(selectedUserId) : 0;
   const selectedMember = members.find(m => m.user_id === selectedUserId);
-
-  const WEEK_LABELS: { [key: number]: string } = {
-    1: "Wild Card",
-    2: "Divisional",
-    3: "Conf. Championship",
-    4: "Super Bowl",
-  };
-
-  const getGridCols = (group: any) =>
-    `3rem 1fr 7rem 5rem ${group.statCols.map(() => "5rem").join(" ")} 7rem`;
+  const isSeasonTab = activeTab === "season";
+  const weekOrNull = isSeasonTab ? null : selectedWeek;
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
@@ -306,26 +291,22 @@ export default function RosterPage() {
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-gray-800 mb-4 gap-1">
-          <button
-            onClick={() => setActiveTab("playoff")}
-            className={`px-4 py-2 text-sm font-bold border-b-2 ${
-              activeTab === "playoff"
-                ? "border-green-500 text-green-400"
-                : "border-transparent text-gray-400 hover:text-white"
-            }`}
-          >
-            Playoff Stats
-          </button>
+        <div className="flex border-b border-gray-800 mb-6 gap-1">
           <button
             onClick={() => setActiveTab("season")}
-            className={`px-4 py-2 text-sm font-bold border-b-2 ${
-              activeTab === "season"
-                ? "border-green-500 text-green-400"
-                : "border-transparent text-gray-400 hover:text-white"
+            className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors ${
+              activeTab === "season" ? "border-green-500 text-green-400" : "border-transparent text-gray-400 hover:text-white"
             }`}
           >
             2026 Season Stats
+          </button>
+          <button
+            onClick={() => setActiveTab("playoff")}
+            className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors ${
+              activeTab === "playoff" ? "border-green-500 text-green-400" : "border-transparent text-gray-400 hover:text-white"
+            }`}
+          >
+            Playoff Stats
           </button>
 
           {activeTab === "playoff" && (
@@ -344,102 +325,121 @@ export default function RosterPage() {
           )}
         </div>
 
-        {selectedUserId && (
+        {roster.length === 0 ? (
+          <div className="bg-gray-900 rounded-xl p-12 text-center border border-gray-800">
+            <p className="text-4xl mb-4">📋</p>
+            <p className="text-gray-300 text-lg font-bold mb-2">No players drafted yet</p>
+            <p className="text-gray-500 text-sm">This roster will populate after the draft completes.</p>
+          </div>
+        ) : (
           <>
             {POSITION_GROUPS.map(group => {
-              const groupPlayers = roster.filter((p: any) =>
-                group.positions.includes(p.position)
-              );
+              const groupPlayers = roster.filter((p: any) => group.positions.includes(p.position));
               if (groupPlayers.length === 0) return null;
 
-              const gridCols = getGridCols(group);
-
               return (
-                <div key={group.label} className="mb-8 overflow-x-auto">
-                  <div
-                    className="grid text-xs text-gray-500 font-bold uppercase px-3 py-2 border-b border-gray-700 bg-gray-900 rounded-t min-w-max"
-                    style={{ gridTemplateColumns: gridCols }}
-                  >
-                    <span>POS</span>
-                    <span className="pl-2">{group.label}</span>
-                    <span className="text-center">OPP</span>
-                    <span className="text-center">PROJ</span>
-                    {group.statCols.map(col => (
-                      <span key={col} className="text-right">{col}</span>
-                    ))}
-                    <span className="text-right">STATUS</span>
-                  </div>
+                <div key={group.label} className="mb-8">
+                  <div className="overflow-x-auto">
+                    {/* Group Header */}
+                    <div className="bg-gray-800 rounded-t-lg px-4 py-2 flex items-center gap-3 min-w-max">
+                      <span className="text-xs font-black text-gray-400 uppercase tracking-widest">{group.label}</span>
+                    </div>
 
-                  {groupPlayers.map((player: any) => {
-                    const stats = activeTab === "playoff"
-                      ? getPlayerWeekStats(player.id, selectedWeek)
-                      : null;
-                    const statCells = getStatCells(player, stats);
-
-                    return (
-                      <div
-                        key={player.id}
-                        className={`grid items-center px-3 py-3 border-b border-gray-800 hover:bg-gray-900 transition-colors min-w-max ${
-                          !player.is_active ? "opacity-40" : ""
-                        }`}
-                        style={{ gridTemplateColumns: gridCols }}
-                      >
-                        <span className={`text-xs font-black px-1.5 py-0.5 rounded text-center w-fit ${getPositionBadge(player.position)}`}>
-                          {player.position}
-                        </span>
-
-                        <div className="pl-2">
-                          <div className="flex items-center gap-2">
-                            <p className={`font-bold text-sm ${!player.is_active ? "line-through text-gray-500" : "text-white"}`}>
-                              {player.name}
-                            </p>
-                            {!player.is_active && (
-                              <span className="text-xs bg-red-900 text-red-400 px-1.5 py-0.5 rounded">OUT</span>
-                            )}
-                          </div>
-                          <p className="text-xs text-gray-500">
-                            {player.nfl_teams?.abbreviation} · Seed {player.nfl_teams?.seed}
-                          </p>
-                        </div>
-
-                        <div className="text-center">
-                          <p className="text-xs font-bold text-gray-500">—</p>
-                          <p className="text-xs text-gray-700">TBD</p>
-                        </div>
-
-                        <div className="text-center">
-                          <p className="text-xs text-blue-600">—</p>
-                        </div>
-
-                        {statCells.map((cell, i) => (
-                          <span key={i} className="text-right text-sm">{cell}</span>
+                    {/* Column Headers */}
+                    <div className="bg-gray-900 border-b border-gray-700 min-w-max">
+                      <div className="grid px-4 py-2 text-xs text-gray-500 font-bold uppercase"
+                        style={{ gridTemplateColumns: `3rem 1fr 5rem ${group.cols.map(() => "5rem").join(" ")}` }}>
+                        <span>POS</span>
+                        <span>PLAYER</span>
+                        <span className="text-center">DRAFTED</span>
+                        {group.cols.map(col => (
+                          <span key={col.header} className={`text-right ${col.highlight ? "text-green-400" : ""}`}>
+                            {col.header}
+                          </span>
                         ))}
-
-                        <span className={`text-right text-xs font-bold ${player.is_active ? "text-green-400" : "text-red-400"}`}>
-                          {player.is_active ? "✓ Active" : "✗ Out"}
-                        </span>
                       </div>
-                    );
-                  })}
+                    </div>
+
+                    {/* Player Rows */}
+                    {groupPlayers
+                      .sort((a: any, b: any) => (a.pick_number || 0) - (b.pick_number || 0))
+                      .map((player: any) => {
+                        const stats = getStats(player.id, weekOrNull);
+                        const isEliminated = player.is_active === false;
+
+                        return (
+                          <div
+                            key={player.id}
+                            className={`grid px-4 py-3 border-b border-gray-800 hover:bg-gray-900 transition-colors min-w-max items-center ${
+                              isEliminated ? "opacity-40" : ""
+                            }`}
+                            style={{ gridTemplateColumns: `3rem 1fr 5rem ${group.cols.map(() => "5rem").join(" ")}` }}
+                          >
+                            {/* Position badge */}
+                            <span className={`text-xs font-black px-1.5 py-0.5 rounded text-center w-fit ${getPositionBadge(player.position)}`}>
+                              {player.position}
+                            </span>
+
+                            {/* Player info */}
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <p className={`font-bold text-sm truncate ${isEliminated ? "line-through text-gray-500" : "text-white"}`}>
+                                  {player.name}
+                                </p>
+                                {isEliminated && (
+                                  <span className="text-xs bg-red-900 text-red-400 px-1.5 py-0.5 rounded flex-shrink-0">ELIM</span>
+                                )}
+                              </div>
+                              <p className="text-xs text-gray-500">
+                                {player.nfl_teams?.abbreviation} · Seed {player.nfl_teams?.seed}
+                              </p>
+                            </div>
+
+                            {/* Draft round/pick */}
+                            <div className="text-center">
+                              <p className="text-xs text-gray-400 font-bold">Rd {player.round}</p>
+                              <p className="text-xs text-gray-600">Pk {player.pick_number}</p>
+                            </div>
+
+                            {/* Stat cells */}
+                            {group.cols.map(col => {
+                              const val = col.fn(stats);
+                              return (
+                                <span key={col.header} className={`text-right text-sm font-mono tabular-nums ${
+                                  col.highlight
+                                    ? val === "—" ? "text-gray-600" : "text-green-400 font-bold"
+                                    : val === "—" ? "text-gray-600" : "text-gray-200"
+                                }`}>
+                                  {val}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        );
+                      })}
+                  </div>
                 </div>
               );
             })}
 
-            {activeTab === "playoff" && roster.length > 0 && (
-              <div className="bg-gray-800 rounded-lg p-4 flex justify-between items-center mt-4 sticky bottom-4">
-                <div className="flex items-center gap-3">
-                  {selectedMember && <Avatar member={selectedMember} size="md" />}
-                  <div>
-                    <p className="font-black text-lg">{selectedMember?.team_name}</p>
-                    <p className="text-gray-400 text-sm">{WEEK_LABELS[selectedWeek]} · {activeCount} active players</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-3xl font-black text-green-400">{teamTotal.toFixed(1)}</p>
-                  <p className="text-xs text-gray-500">Total Points</p>
+            {/* Sticky total bar */}
+            <div className="bg-gray-800 rounded-lg p-4 flex justify-between items-center mt-4 sticky bottom-4 border border-gray-700">
+              <div className="flex items-center gap-3">
+                {selectedMember && <Avatar member={selectedMember} size="md" />}
+                <div>
+                  <p className="font-black text-lg">{selectedMember?.team_name}</p>
+                  <p className="text-gray-400 text-sm">
+                    {activeCount} active · {eliminatedCount} eliminated
+                  </p>
                 </div>
               </div>
-            )}
+              <div className="text-right">
+                <p className="text-3xl font-black text-green-400">{teamTotal.toFixed(1)}</p>
+                <p className="text-xs text-gray-500">
+                  {isSeasonTab ? "2026 Season" : WEEK_LABELS[selectedWeek]}
+                </p>
+              </div>
+            </div>
           </>
         )}
       </div>
