@@ -57,7 +57,6 @@ function fmt(val: any, decimals = 0): string {
   return decimals > 0 ? n.toFixed(decimals) : String(Math.round(n));
 }
 
-// Position group definitions with stat columns
 const POSITION_GROUPS = [
   {
     label: "QUARTERBACKS",
@@ -90,7 +89,6 @@ const POSITION_GROUPS = [
     label: "WIDE RECEIVERS",
     positions: ["WR"],
     cols: [
-      { header: "TGT", fn: (s: any) => fmt(s?.rec_first_downs) },
       { header: "REC", fn: (s: any) => fmt(s?.receptions) },
       { header: "RECYDS", fn: (s: any) => fmt(s?.rec_yards) },
       { header: "RECTD", fn: (s: any) => fmt(s?.rec_tds) },
@@ -164,7 +162,6 @@ export default function RosterPage() {
       if (!user) { router.push("/login"); return; }
       setUser(user);
 
-      // Check for ?team= query param (coming from standings click)
       const teamParam = searchParams.get("team");
 
       const [
@@ -186,8 +183,6 @@ export default function RosterPage() {
       setPlayers(playersData || []);
       setPicks(picksData || []);
       setAllStats(statsData || []);
-
-      // Default to team from URL param, otherwise current user
       setSelectedUserId(teamParam || user.id);
       setLoading(false);
     }
@@ -207,14 +202,12 @@ export default function RosterPage() {
 
   function getStats(playerId: number, week: number | null) {
     if (week === null) {
-      // Season totals (week=0)
       return allStats.find(s => s.player_id === playerId && s.week === 0) || null;
     }
     return allStats.find(s => s.player_id === playerId && s.week === week) || null;
   }
 
   function getPlayerSeasonTotal(playerId: number) {
-    // Sum all playoff weeks (1-4)
     const weekStats = allStats.filter(s => s.player_id === playerId && s.week >= 1 && s.week <= 4);
     if (weekStats.length === 0) return null;
     return weekStats.reduce((sum, s) => sum + (parseFloat(s.fantasy_points) || 0), 0);
@@ -263,10 +256,10 @@ export default function RosterPage() {
               <select
                 value={selectedUserId || ""}
                 onChange={(e) => setSelectedUserId(e.target.value)}
-                className="bg-transparent text-white text-sm font-bold focus:outline-none"
+                className="bg-gray-800 text-white text-sm font-bold focus:outline-none cursor-pointer"
               >
                 {members.map(member => (
-                  <option key={member.id} value={member.user_id}>
+                  <option key={member.id} value={member.user_id} className="bg-gray-800 text-white">
                     {member.team_name}{member.user_id === user?.id ? " (You)" : ""}
                   </option>
                 ))}
@@ -318,7 +311,9 @@ export default function RosterPage() {
                 className="bg-gray-800 text-white px-3 py-1 rounded text-sm border border-gray-700 focus:outline-none focus:border-green-500"
               >
                 {[1, 2, 3, 4].map(w => (
-                  <option key={w} value={w}>Wk {w} — {WEEK_LABELS[w]}</option>
+                  <option key={w} value={w} className="bg-gray-800 text-white">
+                    Wk {w} — {WEEK_LABELS[w]}
+                  </option>
                 ))}
               </select>
             </div>
@@ -340,27 +335,26 @@ export default function RosterPage() {
               return (
                 <div key={group.label} className="mb-8">
                   <div className="overflow-x-auto">
-                    {/* Group Header */}
-                    <div className="bg-gray-800 rounded-t-lg px-4 py-2 flex items-center gap-3 min-w-max">
+                    <div className="bg-gray-800 rounded-t-lg px-4 py-2 min-w-max">
                       <span className="text-xs font-black text-gray-400 uppercase tracking-widest">{group.label}</span>
                     </div>
 
-                    {/* Column Headers */}
                     <div className="bg-gray-900 border-b border-gray-700 min-w-max">
-                      <div className="grid px-4 py-2 text-xs text-gray-500 font-bold uppercase"
-                        style={{ gridTemplateColumns: `3rem 1fr 5rem ${group.cols.map(() => "5rem").join(" ")}` }}>
+                      <div
+                        className="grid px-4 py-2 text-xs text-gray-500 font-bold uppercase"
+                        style={{ gridTemplateColumns: `3rem 1fr 5rem ${group.cols.map(() => "5rem").join(" ")}` }}
+                      >
                         <span>POS</span>
                         <span>PLAYER</span>
                         <span className="text-center">DRAFTED</span>
                         {group.cols.map(col => (
-                          <span key={col.header} className={`text-right ${col.highlight ? "text-green-400" : ""}`}>
+                          <span key={col.header} className={`text-right ${(col as any).highlight ? "text-green-400" : ""}`}>
                             {col.header}
                           </span>
                         ))}
                       </div>
                     </div>
 
-                    {/* Player Rows */}
                     {groupPlayers
                       .sort((a: any, b: any) => (a.pick_number || 0) - (b.pick_number || 0))
                       .map((player: any) => {
@@ -370,17 +364,13 @@ export default function RosterPage() {
                         return (
                           <div
                             key={player.id}
-                            className={`grid px-4 py-3 border-b border-gray-800 hover:bg-gray-900 transition-colors min-w-max items-center ${
-                              isEliminated ? "opacity-40" : ""
-                            }`}
+                            className={`grid px-4 py-3 border-b border-gray-800 hover:bg-gray-900 transition-colors min-w-max items-center ${isEliminated ? "opacity-40" : ""}`}
                             style={{ gridTemplateColumns: `3rem 1fr 5rem ${group.cols.map(() => "5rem").join(" ")}` }}
                           >
-                            {/* Position badge */}
                             <span className={`text-xs font-black px-1.5 py-0.5 rounded text-center w-fit ${getPositionBadge(player.position)}`}>
                               {player.position}
                             </span>
 
-                            {/* Player info */}
                             <div className="min-w-0">
                               <div className="flex items-center gap-2">
                                 <p className={`font-bold text-sm truncate ${isEliminated ? "line-through text-gray-500" : "text-white"}`}>
@@ -395,21 +385,22 @@ export default function RosterPage() {
                               </p>
                             </div>
 
-                            {/* Draft round/pick */}
                             <div className="text-center">
                               <p className="text-xs text-gray-400 font-bold">Rd {player.round}</p>
                               <p className="text-xs text-gray-600">Pk {player.pick_number}</p>
                             </div>
 
-                            {/* Stat cells */}
                             {group.cols.map(col => {
                               const val = col.fn(stats);
                               return (
-                                <span key={col.header} className={`text-right text-sm font-mono tabular-nums ${
-                                  col.highlight
-                                    ? val === "—" ? "text-gray-600" : "text-green-400 font-bold"
-                                    : val === "—" ? "text-gray-600" : "text-gray-200"
-                                }`}>
+                                <span
+                                  key={col.header}
+                                  className={`text-right text-sm font-mono tabular-nums ${
+                                    (col as any).highlight
+                                      ? val === "—" ? "text-gray-600" : "text-green-400 font-bold"
+                                      : val === "—" ? "text-gray-600" : "text-gray-200"
+                                  }`}
+                                >
                                   {val}
                                 </span>
                               );
@@ -422,7 +413,6 @@ export default function RosterPage() {
               );
             })}
 
-            {/* Sticky total bar */}
             <div className="bg-gray-800 rounded-lg p-4 flex justify-between items-center mt-4 sticky bottom-4 border border-gray-700">
               <div className="flex items-center gap-3">
                 {selectedMember && <Avatar member={selectedMember} size="md" />}

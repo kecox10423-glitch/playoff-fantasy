@@ -26,13 +26,10 @@ const AVATAR_COLORS = [
 
 function Avatar({ member, size = "md" }: { member: any; size?: "sm" | "md" | "lg" }) {
   const sizeClass = size === "sm" ? "w-7 h-7 text-xs" : size === "lg" ? "w-14 h-14 text-xl" : "w-10 h-10 text-sm";
-  const initials = member.team_name
-    .split(" ").map((w: string) => w[0]).join("").substring(0, 2).toUpperCase();
-
+  const initials = member.team_name.split(" ").map((w: string) => w[0]).join("").substring(0, 2).toUpperCase();
   if (member.avatar_url) {
     return <img src={member.avatar_url} alt={member.team_name} className={`${sizeClass} rounded-full object-cover flex-shrink-0`} />;
   }
-
   const color = AVATAR_COLORS.find(c => c.name === member.avatar_color) || AVATAR_COLORS[0];
   return (
     <div className={`${sizeClass} rounded-full flex items-center justify-center font-black flex-shrink-0`} style={{ backgroundColor: color.hex }}>
@@ -42,10 +39,10 @@ function Avatar({ member, size = "md" }: { member: any; size?: "sm" | "md" | "lg
 }
 
 function StandingsTable({
-  rows, user, members, scores, picks, players, leagueId, router,
+  rows, user, members, scores, picks, players, leagueId, router, anyScoresExist,
 }: {
   rows: any[]; user: any; members: any[]; scores: any[];
-  picks: any[]; players: any[]; leagueId: string; router: any;
+  picks: any[]; players: any[]; leagueId: string; router: any; anyScoresExist: boolean;
 }) {
   function getMember(userId: string) {
     return members.find(m => m.user_id === userId);
@@ -71,15 +68,16 @@ function StandingsTable({
     return getRosterForUser(userId).filter((p: any) => p?.is_active === false).length;
   }
 
-  function getProjected(userId: string, total: number) {
-    // Rough projection: average points per week so far * 4 weeks
+  function getProjected(userId: string, total: number): number | null {
+    if (!anyScoresExist) return null;
     const weeksWithScores = [1, 2, 3, 4].filter(w => getWeekScore(userId, w) !== null);
     if (weeksWithScores.length === 0) return null;
     const avg = total / weeksWithScores.length;
     return avg * 4;
   }
 
-  const leaderTotal = rows.length > 0 ? (rows[0].total_points || 0) : 0;
+  const leaderTotal = rows.length > 0 ? (parseFloat(rows[0].total_points) || 0) : 0;
+  const anyTeamHasScore = anyScoresExist && leaderTotal > 0;
 
   if (rows.length === 0) return (
     <div className="bg-gray-900 rounded-xl p-8 text-center border border-gray-800">
@@ -111,7 +109,7 @@ function StandingsTable({
               const isMe = row.user_id === user?.id;
               const member = getMember(row.user_id);
               const total = parseFloat(row.total_points) || 0;
-              const pbl = i === 0 ? null : total - leaderTotal;
+              const pbl = !anyTeamHasScore ? null : i === 0 ? null : total - leaderTotal;
               const proj = getProjected(row.user_id, total);
               const rem = getPlayersRemaining(row.user_id);
               const elim = getPlayersEliminated(row.user_id);
@@ -156,7 +154,7 @@ function StandingsTable({
                   <td className="px-3 py-4 text-right font-black text-green-400 text-lg">{total.toFixed(1)}</td>
                   <td className="px-3 py-4 text-right text-sm">
                     {pbl === null
-                      ? <span className="text-yellow-400 font-bold">—</span>
+                      ? <span className="text-gray-600">—</span>
                       : <span className="text-red-400">{pbl.toFixed(1)}</span>
                     }
                   </td>
@@ -223,7 +221,7 @@ export default function StandingsPage() {
       setPicks(picksData || []);
       setScores(scoresData || []);
 
-      // Build rows for ALL members, merging standings data where it exists
+      // Build rows for ALL members even if no standings entry yet
       const allMembers = membersData || [];
       const standingsMap: { [userId: string]: any } = {};
       (standingsData || []).forEach((s: any) => { standingsMap[s.user_id] = s; });
@@ -231,10 +229,6 @@ export default function StandingsPage() {
       const allRows = allMembers.map(m => ({
         user_id: m.user_id,
         total_points: standingsMap[m.user_id]?.total_points || 0,
-        week_1_points: standingsMap[m.user_id]?.week_1_points || 0,
-        week_2_points: standingsMap[m.user_id]?.week_2_points || 0,
-        week_3_points: standingsMap[m.user_id]?.week_3_points || 0,
-        week_4_points: standingsMap[m.user_id]?.week_4_points || 0,
       })).sort((a, b) => b.total_points - a.total_points);
 
       setStandings(allRows);
@@ -248,11 +242,14 @@ export default function StandingsPage() {
   const confAName = league?.conference_a_name || "AFC";
   const confBName = league?.conference_b_name || "NFC";
 
+  // Only show PROJ/PBL when at least one playoff week has been scored
+  const anyScoresExist = scores.some(s => s.week >= 1 && s.week <= 4 && parseFloat(s.total_points) > 0);
+
   function getMemberConference(userId: string) {
     return members.find(m => m.user_id === userId)?.conference || null;
   }
 
-  const tableProps = { user, members, scores, picks, players, leagueId, router };
+  const tableProps = { user, members, scores, picks, players, leagueId, router, anyScoresExist };
 
   if (loading) return (
     <main className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
