@@ -206,28 +206,18 @@ export default function DraftPage() {
     return res.ok;
   }
 
-  // Save queue to DB
   async function saveQueueToDB(userId: string, playerIds: number[]) {
-    // Delete existing queue for this user in this league
-    await supabase.from("draft_queue")
-      .delete()
-      .eq("league_id", leagueId)
-      .eq("user_id", userId);
-
+    await supabase.from("draft_queue").delete()
+      .eq("league_id", leagueId).eq("user_id", userId);
     if (playerIds.length === 0) return;
-
-    // Insert new queue order
     await supabase.from("draft_queue").insert(
       playerIds.map((playerId, i) => ({
-        league_id: leagueId,
-        user_id: userId,
-        player_id: playerId,
-        queue_order: i,
+        league_id: leagueId, user_id: userId,
+        player_id: playerId, queue_order: i,
       }))
     );
   }
 
-  // Get best autopick for a user — queue first, then highest projected
   function getBestAutoPick(userId: string, pickedIds: number[], userPicks: any[]): any {
     const currentPlayers = playersRef.current;
     const positionCounts: { [pos: string]: number } = {};
@@ -241,18 +231,16 @@ export default function DraftPage() {
       (positionCounts[p.position] || 0) < (ROSTER_SLOTS[p.position as keyof typeof ROSTER_SLOTS] || 0)
     );
 
-    // Check queue first
     const userQueue = allQueuesRef.current[userId] || [];
     for (const queuedId of userQueue) {
       const queued = available.find(p => p.id === queuedId);
       if (queued) return queued;
     }
 
-    // Fall back to highest projected
     return available.sort((a, b) => (b.fantasy_points || 0) - (a.fantasy_points || 0))[0];
   }
 
-  async function executeAutoPick(userId: string, isOfflinePick = false) {
+  async function executeAutoPick(userId: string) {
     const currentPicks = picksRef.current;
     const currentMembers = membersRef.current;
     if (!currentMembers.length) return;
@@ -290,7 +278,6 @@ export default function DraftPage() {
     pickStartTimeRef.current = pickStartTime;
     setTimeLeft(TIMER_SECONDS);
 
-    // Remove picked player from queue if it was queued
     if (userId === userRef.current?.id) {
       setQueue(prev => {
         const updated = prev.filter(id => id !== available.id);
@@ -298,11 +285,10 @@ export default function DraftPage() {
         return updated;
       });
     } else {
-      // Update allQueues for offline user
-      setAllQueues(prev => {
-        const userQueue = (prev[userId] || []).filter(id => id !== available.id);
-        return { ...prev, [userId]: userQueue };
-      });
+      setAllQueues(prev => ({
+        ...prev,
+        [userId]: (prev[userId] || []).filter(id => id !== available.id),
+      }));
     }
 
     await supabase.channel(`picks-broadcast-${leagueId}`).send({
@@ -337,16 +323,47 @@ export default function DraftPage() {
       const { data: queueData } = await supabase
         .from("draft_queue").select("*").eq("league_id", leagueId).order("queue_order");
 
+      // KEY FIX: build statsMap and merge WITHOUT overwriting player's integer id
       const statsMap: { [playerId: number]: any } = {};
       (statsData || []).forEach((s: any) => { statsMap[s.player_id] = s; });
 
-      const playersWithStats = (playersData || []).map((p: any) => ({
-        ...p,
-        ...(statsMap[p.id] || {}),
-        fantasy_points: parseFloat(statsMap[p.id]?.fantasy_points) || 0,
-      }));
+      const playersWithStats = (playersData || []).map((p: any) => {
+        const stats = statsMap[p.id] || {};
+        return {
+          ...p,
+          // Explicitly map stat fields — never spread stats object which would overwrite p.id
+          fantasy_points: parseFloat(stats.fantasy_points) || 0,
+          pass_completions: stats.pass_completions,
+          pass_attempts: stats.pass_attempts,
+          pass_yards: stats.pass_yards,
+          pass_tds: stats.pass_tds,
+          pass_first_downs: stats.pass_first_downs,
+          interceptions: stats.interceptions,
+          rush_attempts: stats.rush_attempts,
+          rush_yards: stats.rush_yards,
+          rush_tds: stats.rush_tds,
+          rush_first_downs: stats.rush_first_downs,
+          receptions: stats.receptions,
+          rec_yards: stats.rec_yards,
+          rec_tds: stats.rec_tds,
+          rec_first_downs: stats.rec_first_downs,
+          fg_made: stats.fg_made,
+          fg_attempts: stats.fg_attempts,
+          fg_0_39: stats.fg_0_39,
+          fg_40_49: stats.fg_40_49,
+          fg_50_plus: stats.fg_50_plus,
+          xp_made: stats.xp_made,
+          pat_attempts: stats.pat_attempts,
+          dst_sacks: stats.dst_sacks,
+          dst_ints: stats.dst_ints,
+          dst_fumbles_rec: stats.dst_fumbles_rec,
+          dst_tds: stats.dst_tds,
+          dst_safety: stats.dst_safety,
+          dst_tackles: stats.dst_tackles,
+          dst_points_allowed: stats.dst_points_allowed,
+        };
+      });
 
-      // Build queue map for all users
       const queuesMap: { [userId: string]: number[] } = {};
       (queueData || []).forEach((q: any) => {
         if (!queuesMap[q.user_id]) queuesMap[q.user_id] = [];
@@ -363,9 +380,7 @@ export default function DraftPage() {
       picksRef.current = picksData || [];
       setAllQueues(queuesMap);
       allQueuesRef.current = queuesMap;
-      // Set my queue from DB
-      const myQueue = queuesMap[user.id] || [];
-      setQueue(myQueue);
+      setQueue(queuesMap[user.id] || []);
       setChatMessages((chatData || []).map((m: any) => ({
         text: m.message, team: m.team_name,
         time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -412,7 +427,6 @@ export default function DraftPage() {
           })
         .subscribe();
 
-      // Listen for queue updates from other users
       const queueSub = supabase.channel(`queue-${leagueId}`)
         .on("broadcast", { event: "queue_update" }, (payload) => {
           const { userId, queue: updatedQueue } = payload.payload;
@@ -473,7 +487,7 @@ export default function DraftPage() {
     };
   }, []);
 
-  // Universal timer — fires autopick when clock hits 0
+  // Universal timer
   useEffect(() => {
     if (loading) return;
     if (league?.draft_status !== "IN_PROGRESS") return;
@@ -503,7 +517,6 @@ export default function DraftPage() {
         const owner = currentMembers[index];
         if (!owner) return;
 
-        // Only fire autopick if it's our turn
         if (owner.user_id === currentUser.id) {
           executeAutoPick(currentUser.id);
         }
@@ -513,10 +526,9 @@ export default function DraftPage() {
     return () => clearInterval(timerRef.current);
   }, [loading, league?.draft_status]);
 
-  // Reset autoPickFiredRef on new pick
   useEffect(() => { autoPickFiredRef.current = false; }, [picks.length]);
 
-  // On-clock: fire immediately if offline or auto mode on
+  // On-clock alert + immediate autopick if auto mode on
   useEffect(() => {
     if (loading || league?.draft_status !== "IN_PROGRESS") return;
     const currentPicks = picksRef.current;
@@ -533,7 +545,6 @@ export default function DraftPage() {
 
     if (myTurn && !wasMyTurnRef.current) {
       playOnClockAlert();
-      // Fire immediately if auto mode is on
       if (autoPickEnabledRef.current) {
         setTimeout(() => executeAutoPick(user.id), 300);
       }
@@ -541,7 +552,7 @@ export default function DraftPage() {
     wasMyTurnRef.current = myTurn;
   }, [picks, league?.draft_status]);
 
-  // Countdown timer with 10-second warning
+  // Countdown timer
   useEffect(() => {
     if (loading) return;
     const isPreDraft = league?.draft_status !== "IN_PROGRESS" && league?.draft_status !== "COMPLETED";
@@ -588,7 +599,9 @@ export default function DraftPage() {
     setStartingDraft(true);
     const now = new Date().toISOString();
     pickStartTimeRef.current = now;
-    await supabase.from("leagues").update({ draft_status: "IN_PROGRESS", pick_start_time: now }).eq("id", leagueId);
+    await supabase.from("leagues").update({
+      draft_status: "IN_PROGRESS", pick_start_time: now,
+    }).eq("id", leagueId);
     setLeague((prev: any) => ({ ...prev, draft_status: "IN_PROGRESS", pick_start_time: now }));
     leagueRef.current = { ...leagueRef.current, draft_status: "IN_PROGRESS", pick_start_time: now };
     setTimeLeft(TIMER_SECONDS);
@@ -632,12 +645,10 @@ export default function DraftPage() {
       : [...queue, playerId];
     setQueue(updated);
     await saveQueueToDB(user.id, updated);
-    // Broadcast queue update to other users
     await supabase.channel(`queue-${leagueId}`).send({
       type: "broadcast", event: "queue_update",
       payload: { userId: user.id, queue: updated },
     });
-    // Update allQueues locally
     setAllQueues(prev => ({ ...prev, [user.id]: updated }));
   }
 
@@ -682,7 +693,6 @@ export default function DraftPage() {
     pickStartTimeRef.current = pickStartTime;
     setTimeLeft(TIMER_SECONDS);
 
-    // Remove from queue if queued
     if (queue.includes(playerId)) {
       const updated = queue.filter(id => id !== playerId);
       setQueue(updated);
@@ -768,7 +778,7 @@ export default function DraftPage() {
       {/* TOP BAR */}
       <div className="bg-gray-900 border-b border-gray-800 flex-shrink-0">
 
-        {/* Row 1: Logo + Timer + Controls */}
+        {/* Row 1 */}
         <div className="px-3 py-2 flex items-center justify-between border-b border-gray-800 gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <PFFLLogo size={24} />
@@ -828,7 +838,7 @@ export default function DraftPage() {
           </div>
         </div>
 
-        {/* Row 2: Status bar */}
+        {/* Row 2: Status */}
         <div className={`px-3 py-2 flex items-center justify-between gap-2 ${
           countdownWarning && isPreDraft ? "bg-red-950" :
           isMyTurn() && !draftComplete && !isPreDraft ? "bg-green-900" : ""
@@ -877,14 +887,13 @@ export default function DraftPage() {
           </div>
         </div>
 
-        {/* Position error banner */}
         {positionError && (
           <div className="px-4 py-2 bg-red-900 border-t border-red-700 text-red-200 text-xs font-bold text-center">
             ⚠️ {positionError}
           </div>
         )}
 
-        {/* Row 3: Snake Order Strip */}
+        {/* Row 3: Snake Strip */}
         <div className="border-t border-gray-800 px-3 py-2 overflow-x-auto">
           {isPreDraft ? (
             <div className="flex items-center gap-2 min-w-max">
@@ -930,7 +939,7 @@ export default function DraftPage() {
                     }`}>
                       {member.team_name.charAt(0).toUpperCase()}
                       {isOnClock && !isOffline && <span className="absolute -top-1 left-1/2 -translate-x-1/2 text-yellow-400 text-xs leading-none">▼</span>}
-                      {isOffline && <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-gray-600 rounded-full border border-gray-900" title="Offline" />}
+                      {isOffline && <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-gray-600 rounded-full border border-gray-900" />}
                       {isOnClock && isOffline && <span className="absolute -top-1 left-1/2 -translate-x-1/2 text-gray-500 text-xs leading-none">▼</span>}
                     </div>
                     <p className={`text-xs mt-0.5 truncate max-w-10 text-center ${isOnClock ? isOffline ? "text-gray-500" : "text-yellow-300 font-bold" : isNext ? "text-gray-400" : "text-gray-600"}`}>
@@ -944,7 +953,7 @@ export default function DraftPage() {
           )}
         </div>
 
-        {/* MOBILE TAB SWITCHER */}
+        {/* Mobile Tabs */}
         <div className="md:hidden flex border-t border-gray-800">
           {(["roster", "players", "board"] as MobileTab[]).map(tab => (
             <button key={tab} onClick={() => setMobileTab(tab)}
@@ -958,7 +967,7 @@ export default function DraftPage() {
       {/* MAIN CONTENT */}
       <div className="flex flex-1 overflow-hidden">
 
-        {/* LEFT PANEL: My Roster */}
+        {/* LEFT: My Roster */}
         <div className={`${mobileTab === "roster" ? "flex" : "hidden"} md:flex w-full md:w-48 flex-shrink-0 bg-gray-900 md:border-r border-gray-800 flex-col`}>
           <div className="px-3 py-2 border-b border-gray-800 flex-shrink-0">
             <p className="text-xs font-black text-gray-400 uppercase tracking-wider">
@@ -992,10 +1001,9 @@ export default function DraftPage() {
           </div>
         </div>
 
-        {/* CENTER PANEL: Player List */}
+        {/* CENTER: Players */}
         <div className={`${mobileTab === "players" ? "flex" : "hidden"} md:flex flex-1 flex-col overflow-hidden`}>
 
-          {/* Queue */}
           {queuedPlayers.length > 0 && (
             <div className="bg-blue-950 border-b border-blue-800 px-3 py-2 flex-shrink-0">
               <p className="text-xs font-bold text-blue-300 mb-1">Queue ({queuedPlayers.length}) — picks first available if you go auto</p>
@@ -1014,7 +1022,6 @@ export default function DraftPage() {
             </div>
           )}
 
-          {/* Filters */}
           <div className="px-3 py-2 border-b border-gray-800 flex-shrink-0 bg-gray-900">
             <div className="flex gap-2 mb-2">
               <input type="text" placeholder="Search players..." value={search}
@@ -1041,7 +1048,6 @@ export default function DraftPage() {
             </div>
           </div>
 
-          {/* Desktop Column Headers */}
           <div className="hidden md:block border-b border-gray-800 bg-gray-900 flex-shrink-0 overflow-x-auto">
             <div className="grid text-xs text-gray-500 font-bold uppercase px-3 py-1.5 min-w-max items-center"
               style={{ gridTemplateColumns: gridCols }}>
@@ -1059,9 +1065,7 @@ export default function DraftPage() {
             </div>
           </div>
 
-          {/* Player Rows */}
           <div className="overflow-y-auto flex-1 pb-20 md:pb-6">
-
             {/* Desktop */}
             <div className="hidden md:block overflow-x-auto">
               {filteredPlayers.map((player, index) => {
@@ -1123,7 +1127,9 @@ export default function DraftPage() {
                     <div className="flex-1 min-w-0">
                       <p className={`font-bold text-sm truncate ${picked ? "line-through text-gray-500" : "text-white"}`}>{player.name}</p>
                       <p className="text-xs text-gray-500">
-                        {player.nfl_teams?.abbreviation} · {player.fantasy_points ? <span className="text-blue-400 font-bold">{player.fantasy_points.toFixed(1)}</span> : "No stats"}
+                        {player.nfl_teams?.abbreviation} · {player.fantasy_points
+                          ? <span className="text-blue-400 font-bold">{player.fantasy_points.toFixed(1)}</span>
+                          : "No stats"}
                       </p>
                     </div>
                     <span className={`text-xs font-black px-1.5 py-0.5 rounded flex-shrink-0 ${getPositionBadge(player.position)}`}>
@@ -1153,7 +1159,7 @@ export default function DraftPage() {
           </div>
         </div>
 
-        {/* RIGHT PANEL: Board + Chat */}
+        {/* RIGHT: Board + Chat */}
         <div className={`${mobileTab === "board" ? "flex" : "hidden"} md:flex w-full md:w-60 flex-shrink-0 bg-gray-900 md:border-l border-gray-800 flex-col`}>
           <div className="flex border-b border-gray-800 flex-shrink-0">
             <button onClick={() => setRightPanel("board")}
