@@ -323,7 +323,6 @@ export default function DraftPage() {
       const { data: queueData } = await supabase
         .from("draft_queue").select("*").eq("league_id", leagueId).order("queue_order");
 
-      // KEY FIX: build statsMap and merge WITHOUT overwriting player's integer id
       const statsMap: { [playerId: number]: any } = {};
       (statsData || []).forEach((s: any) => { statsMap[s.player_id] = s; });
 
@@ -331,7 +330,6 @@ export default function DraftPage() {
         const stats = statsMap[p.id] || {};
         return {
           ...p,
-          // Explicitly map stat fields — never spread stats object which would overwrite p.id
           fantasy_points: parseFloat(stats.fantasy_points) || 0,
           pass_completions: stats.pass_completions,
           pass_attempts: stats.pass_attempts,
@@ -487,7 +485,7 @@ export default function DraftPage() {
     };
   }, []);
 
-  // Universal timer
+  // Universal timer — fires autopick at t=0 only for the current user's own turn
   useEffect(() => {
     if (loading) return;
     if (league?.draft_status !== "IN_PROGRESS") return;
@@ -517,6 +515,7 @@ export default function DraftPage() {
         const owner = currentMembers[index];
         if (!owner) return;
 
+        // Offline owner autopick is handled immediately by the picks useEffect below
         if (owner.user_id === currentUser.id) {
           executeAutoPick(currentUser.id);
         }
@@ -528,7 +527,7 @@ export default function DraftPage() {
 
   useEffect(() => { autoPickFiredRef.current = false; }, [picks.length]);
 
-  // On-clock alert + immediate autopick if auto mode on
+  // On-clock alert + immediate autopick for auto mode OR offline owner
   useEffect(() => {
     if (loading || league?.draft_status !== "IN_PROGRESS") return;
     const currentPicks = picksRef.current;
@@ -542,26 +541,48 @@ export default function DraftPage() {
     const index = round % 2 === 0 ? numTeams - 1 - posInRound : posInRound;
     const owner = currentMembers[index];
     const myTurn = owner?.user_id === user?.id;
+    const ownerIsOffline = owner ? !onlineUserIdsRef.current.includes(owner.user_id) : false;
 
     if (myTurn && !wasMyTurnRef.current) {
       playOnClockAlert();
       if (autoPickEnabledRef.current) {
+        // My turn + auto mode on: pick immediately
         setTimeout(() => executeAutoPick(user.id), 300);
       }
+    } else if (!myTurn && owner && ownerIsOffline && !wasMyTurnRef.current) {
+      // Owner is offline: autopick for them after 1.5s
+      const offlineOwnerUserId = owner.user_id;
+      setTimeout(() => {
+        // Confirm they still haven't picked before firing
+        const latestPicks = picksRef.current;
+        if (latestPicks.length === currentPicks.length) {
+          executeAutoPick(offlineOwnerUserId);
+        }
+      }, 1500);
     }
+
     wasMyTurnRef.current = myTurn;
   }, [picks, league?.draft_status]);
 
-  // Countdown timer
+  // Countdown timer — auto-starts draft when it hits zero
   useEffect(() => {
     if (loading) return;
     const isPreDraft = league?.draft_status !== "IN_PROGRESS" && league?.draft_status !== "COMPLETED";
     if (!isPreDraft || !league?.draft_time) { setCountdown(null); return; }
     let warnedAt10 = false;
+    let autoStartFired = false;
     function tick() {
       const target = parseUTCTimestamp(league.draft_time).getTime();
       const diff = target - Date.now();
-      if (diff <= 0) { setCountdown({ d: 0, h: 0, m: 0, s: 0 }); return; }
+      if (diff <= 0) {
+        setCountdown({ d: 0, h: 0, m: 0, s: 0 });
+        if (!autoStartFired && leagueRef.current?.draft_status !== "IN_PROGRESS" && leagueRef.current?.draft_status !== "COMPLETED") {
+          autoStartFired = true;
+          clearInterval(countdownRef.current);
+          handleStartDraft();
+        }
+        return;
+      }
       const secs = Math.floor(diff / 1000);
       setCountdown({
         d: Math.floor(diff / 86400000),
