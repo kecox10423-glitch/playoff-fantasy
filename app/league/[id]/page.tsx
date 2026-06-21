@@ -55,11 +55,156 @@ function Avatar({ member, size = "md" }: { member: any; size?: "sm" | "md" | "lg
   );
 }
 
+function BracketView({ games, teams }: { games: any[]; teams: any[] }) {
+  const [confTab, setConfTab] = useState<"AFC" | "NFC">("AFC");
+
+  function getTeam(id: number) {
+    return teams.find(t => t.id === id);
+  }
+
+  function getGamesForRound(conf: string, round: string) {
+    return games.filter(g => g.conference === conf && g.round === round);
+  }
+
+  function BracketGame({ game }: { game: any }) {
+    const home = getTeam(game.home_team_id);
+    const away = getTeam(game.away_team_id);
+    const winner = game.winner_team_id;
+
+    function TeamRow({ team, isWinner }: { team: any; isWinner: boolean }) {
+      if (!team) return (
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-700">
+          <span className="text-gray-600 text-xs w-5 text-center">—</span>
+          <span className="text-gray-600 text-sm">TBD</span>
+        </div>
+      );
+      return (
+        <div className={`flex items-center gap-2 px-3 py-2 border-b border-gray-700 last:border-0 ${isWinner ? "bg-green-950" : winner && !isWinner ? "opacity-40" : ""}`}>
+          <span className={`text-xs font-black w-5 text-center ${isWinner ? "text-green-400" : "text-gray-500"}`}>
+            {team.seed}
+          </span>
+          <span className={`text-sm font-bold flex-1 ${isWinner ? "text-green-400" : "text-white"}`}>
+            {team.abbreviation}
+          </span>
+          {isWinner && <span className="text-green-400 text-xs">✓</span>}
+          {team.is_eliminated && !isWinner && <span className="text-red-500 text-xs">✕</span>}
+        </div>
+      );
+    }
+
+    return (
+      <div className="bg-gray-800 rounded-lg overflow-hidden border border-gray-700 w-44 flex-shrink-0">
+        <TeamRow team={home} isWinner={winner === game.home_team_id} />
+        <TeamRow team={away} isWinner={winner === game.away_team_id} />
+        {game.game_time && (
+          <div className="px-3 py-1 bg-gray-900">
+            <p className="text-xs text-gray-600">{game.game_time}</p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  function RoundColumn({ conf, round, label }: { conf: string; round: string; label: string }) {
+    const roundGames = getGamesForRound(conf, round);
+    if (round === "DIV" && roundGames.length === 0) {
+      return (
+        <div className="flex flex-col gap-4">
+          <p className="text-xs text-gray-600 font-bold uppercase tracking-wider mb-2">{label}</p>
+          <div className="bg-gray-800 rounded-lg border border-dashed border-gray-700 w-44 h-20 flex items-center justify-center">
+            <p className="text-gray-600 text-xs">After Wild Card</p>
+          </div>
+          <div className="bg-gray-800 rounded-lg border border-dashed border-gray-700 w-44 h-20 flex items-center justify-center">
+            <p className="text-gray-600 text-xs">After Wild Card</p>
+          </div>
+        </div>
+      );
+    }
+    if ((round === "CC" || round === "SB") && roundGames.length === 0) {
+      return (
+        <div className="flex flex-col gap-4">
+          <p className="text-xs text-gray-600 font-bold uppercase tracking-wider mb-2">{label}</p>
+          <div className="bg-gray-800 rounded-lg border border-dashed border-gray-700 w-44 h-20 flex items-center justify-center">
+            <p className="text-gray-600 text-xs">TBD</p>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div className="flex flex-col gap-4">
+        <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-2">{label}</p>
+        {roundGames.map(g => <BracketGame key={g.id} game={g} />)}
+      </div>
+    );
+  }
+
+  const afcBye = teams.find(t => t.conference === "AFC" && t.seed === 1);
+  const nfcBye = teams.find(t => t.conference === "NFC" && t.seed === 1);
+
+  function ByeCard({ team }: { team: any }) {
+    if (!team) return null;
+    const isElim = team.is_eliminated;
+    return (
+      <div className={`bg-gray-800 rounded-lg border border-gray-700 w-44 px-3 py-3 flex-shrink-0 ${isElim ? "opacity-40" : ""}`}>
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-xs font-black text-gray-500 w-5 text-center">{team.seed}</span>
+          <span className={`text-sm font-bold ${isElim ? "text-gray-500 line-through" : "text-white"}`}>{team.abbreviation}</span>
+        </div>
+        <p className="text-xs text-blue-400 font-bold pl-7">BYE</p>
+      </div>
+    );
+  }
+
+  const byeTeam = confTab === "AFC" ? afcBye : nfcBye;
+
+  return (
+    <div>
+      <div className="flex gap-2 mb-6">
+        {(["AFC", "NFC"] as const).map(c => (
+          <button
+            key={c}
+            onClick={() => setConfTab(c)}
+            className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors ${
+              confTab === c ? "bg-green-600 text-white" : "bg-gray-800 text-gray-400 hover:bg-gray-700"
+            }`}
+          >
+            {c}
+          </button>
+        ))}
+      </div>
+
+      <div className="overflow-x-auto pb-4">
+        <div className="flex gap-8 min-w-max">
+          <div className="flex flex-col gap-4">
+            <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-2">Wild Card</p>
+            <ByeCard team={byeTeam} />
+            {getGamesForRound(confTab, "WC").map(g => <BracketGame key={g.id} game={g} />)}
+          </div>
+          <RoundColumn conf={confTab} round="DIV" label="Divisional" />
+          <RoundColumn conf={confTab} round="CC" label="Conf. Champ" />
+        </div>
+      </div>
+
+      {games.some(g => g.round === "SB") && (
+        <div className="mt-8 pt-6 border-t border-gray-800">
+          <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-4">Super Bowl</p>
+          <div className="flex gap-4">
+            {getGamesForRound("SB", "SB").map(g => <BracketGame key={g.id} game={g} />)}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function LeaguePage() {
   const [league, setLeague] = useState<any>(null);
   const [members, setMembers] = useState<any[]>([]);
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<"league" | "bracket">("league");
+  const [games, setGames] = useState<any[]>([]);
+  const [nflTeams, setNflTeams] = useState<any[]>([]);
   const [showAvatarModal, setShowAvatarModal] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
@@ -87,8 +232,16 @@ export default function LeaguePage() {
       const { data: membersData } = await supabase
         .from("league_members").select("*").eq("league_id", leagueId);
 
+      const { data: gamesData } = await supabase
+        .from("playoff_games").select("*").eq("season", 2026).order("game_date");
+
+      const { data: teamsData } = await supabase
+        .from("nfl_teams").select("*").eq("season", 2026);
+
       setLeague(leagueData);
       setMembers(membersData || []);
+      setGames(gamesData || []);
+      setNflTeams(teamsData || []);
 
       const myMember = (membersData || []).find((m: any) => m.user_id === user.id);
       if (myMember?.avatar_color) setSelectedColor(myMember.avatar_color);
@@ -261,12 +414,10 @@ export default function LeaguePage() {
         activePage="league"
       />
 
-      {/* Avatar Modal */}
       {showAvatarModal && (
         <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 px-4">
           <div className="bg-gray-900 rounded-xl p-6 w-full max-w-sm border border-gray-700">
             <h2 className="font-black text-lg mb-4">Edit Your Avatar</h2>
-
             <div className="flex justify-center mb-5">
               {avatarPreview ? (
                 <img src={avatarPreview} className="w-20 h-20 rounded-full object-cover" />
@@ -274,56 +425,31 @@ export default function LeaguePage() {
                 <Avatar member={{ ...myMember, avatar_color: selectedColor, avatar_url: null }} size="lg" />
               )}
             </div>
-
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleFileSelect}
-              className="hidden"
-            />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="w-full bg-gray-800 hover:bg-gray-700 text-white font-bold py-2.5 rounded-lg text-sm mb-4"
-            >
+            <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelect} className="hidden" />
+            <button onClick={() => fileInputRef.current?.click()} className="w-full bg-gray-800 hover:bg-gray-700 text-white font-bold py-2.5 rounded-lg text-sm mb-4">
               📁 Upload Image
             </button>
-
             <p className="text-gray-400 text-xs mb-2">Default color (if no image):</p>
             <div className="flex flex-wrap gap-2 mb-5">
               {AVATAR_COLORS.map(color => (
                 <button
                   key={color.name}
                   onClick={() => { setSelectedColor(color.name); setAvatarPreview(null); setAvatarFile(null); }}
-                  className={`w-8 h-8 rounded-full border-2 transition-all ${
-                    selectedColor === color.name ? "border-white scale-110" : "border-transparent"
-                  }`}
+                  className={`w-8 h-8 rounded-full border-2 transition-all ${selectedColor === color.name ? "border-white scale-110" : "border-transparent"}`}
                   style={{ backgroundColor: color.hex }}
                 />
               ))}
             </div>
-
             <div className="flex gap-2">
-              <button
-                onClick={handleSaveAvatar}
-                disabled={uploadingAvatar}
-                className="flex-1 bg-green-600 hover:bg-green-500 disabled:bg-gray-700 text-white font-bold py-2.5 rounded-lg text-sm"
-              >
+              <button onClick={handleSaveAvatar} disabled={uploadingAvatar} className="flex-1 bg-green-600 hover:bg-green-500 disabled:bg-gray-700 text-white font-bold py-2.5 rounded-lg text-sm">
                 {uploadingAvatar ? "Saving..." : "Save"}
               </button>
               {myMember?.avatar_url && (
-                <button
-                  onClick={handleRemoveAvatar}
-                  disabled={uploadingAvatar}
-                  className="bg-red-900 hover:bg-red-800 text-red-300 font-bold py-2.5 px-4 rounded-lg text-sm"
-                >
+                <button onClick={handleRemoveAvatar} disabled={uploadingAvatar} className="bg-red-900 hover:bg-red-800 text-red-300 font-bold py-2.5 px-4 rounded-lg text-sm">
                   Remove
                 </button>
               )}
-              <button
-                onClick={() => { setShowAvatarModal(false); setAvatarPreview(null); setAvatarFile(null); }}
-                className="bg-gray-800 hover:bg-gray-700 text-white font-bold py-2.5 px-4 rounded-lg text-sm"
-              >
+              <button onClick={() => { setShowAvatarModal(false); setAvatarPreview(null); setAvatarFile(null); }} className="bg-gray-800 hover:bg-gray-700 text-white font-bold py-2.5 px-4 rounded-lg text-sm">
                 Cancel
               </button>
             </div>
@@ -333,7 +459,6 @@ export default function LeaguePage() {
 
       <div className="max-w-3xl mx-auto px-4 py-8">
 
-        {/* League Header Card */}
         <div className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800">
           <div className="flex flex-wrap justify-between items-start gap-4 mb-6">
             <div>
@@ -353,9 +478,7 @@ export default function LeaguePage() {
               </div>
             </div>
             <div className={`px-3 py-1 rounded-full text-xs font-bold flex-shrink-0 ${
-              draftComplete
-                ? "bg-green-900 text-green-400"
-                : "bg-yellow-900 text-yellow-400"
+              draftComplete ? "bg-green-900 text-green-400" : "bg-yellow-900 text-yellow-400"
             }`}>
               {draftComplete ? "Draft Complete" : "Draft Pending"}
             </div>
@@ -367,7 +490,7 @@ export default function LeaguePage() {
               <p className="text-xs text-gray-500 mt-1">Teams Joined</p>
             </div>
             <div className="text-center">
-              <p className="text-2xl font-black text-green-400">{spotsLeft}</p>
+              <p className={`text-2xl font-black ${spotsLeft === 0 ? "text-gray-500" : "text-green-400"}`}>{spotsLeft}</p>
               <p className="text-xs text-gray-500 mt-1">Spots Left</p>
             </div>
             <div className="text-center">
@@ -376,148 +499,142 @@ export default function LeaguePage() {
             </div>
           </div>
 
+          {draftComplete ? (
+            <div className="w-full bg-gray-800 border border-gray-700 text-gray-400 font-black py-3 rounded-lg text-lg text-center">
+              🏆 Draft Complete — Good Luck!
+            </div>
+          ) : (
+            <button onClick={openDraftRoom} className="w-full bg-green-600 hover:bg-green-500 text-white font-black py-3 rounded-lg text-lg transition-colors">
+              🏈 Enter Draft Room
+            </button>
+          )}
+        </div>
+
+        <div className="flex border-b border-gray-800 mb-6">
           <button
-            onClick={openDraftRoom}
-            className="w-full bg-green-600 hover:bg-green-500 text-white font-black py-3 rounded-lg text-lg transition-colors"
+            onClick={() => setActiveTab("league")}
+            className={`px-4 py-2.5 text-sm font-bold border-b-2 transition-colors ${
+              activeTab === "league" ? "border-green-500 text-green-400" : "border-transparent text-gray-500 hover:text-white"
+            }`}
           >
-            🏈 Enter Draft Room
+            Teams
+          </button>
+          <button
+            onClick={() => setActiveTab("bracket")}
+            className={`px-4 py-2.5 text-sm font-bold border-b-2 transition-colors ${
+              activeTab === "bracket" ? "border-green-500 text-green-400" : "border-transparent text-gray-500 hover:text-white"
+            }`}
+          >
+            🏈 Playoff Bracket
           </button>
         </div>
 
-        {/* Teams List */}
-        <div className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800">
-          <h2 className="font-bold mb-4 text-gray-300 uppercase text-xs tracking-wider">
-            Teams ({members.length}/{league.num_teams})
-          </h2>
-          <div className="flex flex-col gap-1">
-            {members.map((member, i) => {
-              const isMe = member.user_id === user?.id;
-              const isEditingThisName = isMe && editingTeamName;
-              const isThisCommissioner = member.user_id === league.commissioner_user_id;
-              const isConfirmingRemove = confirmRemoveId === member.user_id;
-              const isRemoving = removingMemberId === member.user_id;
-
-              return (
-                <div key={member.id} className="flex items-center gap-3 py-2.5 border-b border-gray-800 last:border-0">
-                  <div className="relative flex-shrink-0">
-                    <Avatar member={member} size="md" />
-                    {isMe && (
-                      <button
-                        onClick={() => setShowAvatarModal(true)}
-                        className="absolute -bottom-1 -right-1 w-5 h-5 bg-gray-600 hover:bg-gray-500 rounded-full flex items-center justify-center text-xs"
-                        title="Edit avatar"
-                      >
-                        ✏
-                      </button>
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    {isEditingThisName ? (
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="text"
-                          value={teamNameInput}
-                          onChange={(e) => setTeamNameInput(e.target.value)}
-                          onKeyDown={(e) => e.key === "Enter" && handleSaveTeamName()}
-                          maxLength={50}
-                          autoFocus
-                          className="bg-gray-800 text-white px-2 py-1 rounded text-sm font-bold border border-gray-700 focus:outline-none focus:border-green-500 min-w-0 flex-1"
-                        />
-                        <button
-                          onClick={handleSaveTeamName}
-                          disabled={savingTeamName || !teamNameInput.trim()}
-                          className="text-xs bg-green-600 hover:bg-green-500 disabled:bg-gray-700 text-white font-bold px-2.5 py-1 rounded flex-shrink-0"
-                        >
-                          {savingTeamName ? "..." : "Save"}
-                        </button>
-                        <button
-                          onClick={() => { setEditingTeamName(false); setTeamNameInput(member.team_name); }}
-                          className="text-xs text-gray-500 hover:text-white px-1 flex-shrink-0"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold truncate">{member.team_name}</span>
-                        {isMe && (
-                          <>
-                            <span className="hidden sm:inline text-xs text-gray-500">(You)</span>
-                            <button
-                              onClick={() => { setEditingTeamName(true); setTeamNameInput(member.team_name); }}
-                              className="text-gray-600 hover:text-white text-xs flex-shrink-0"
-                              title="Edit team name"
-                            >
-                              ✏
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    {getConferenceBadge(member)}
-                    {isThisCommissioner && (
-                      <span className="text-xs bg-green-900 text-green-400 w-5 h-5 sm:w-auto sm:h-auto sm:px-2 sm:py-0.5 rounded-full flex items-center justify-center font-bold">
-                        <span className="sm:hidden">C</span>
-                        <span className="hidden sm:inline">Commissioner</span>
-                      </span>
-                    )}
-                    <span className="hidden sm:inline text-xs text-gray-600">#{i + 1}</span>
-
-                    {/* Remove member — commissioner only, not themselves, pre-draft only */}
-                    {isCommissioner && !isMe && !isThisCommissioner && !isDraftStarted && (
-                      isConfirmingRemove ? (
-                        <div className="flex gap-1">
-                          <button
-                            onClick={() => handleRemoveMember(member.user_id)}
-                            disabled={isRemoving}
-                            className="text-xs bg-red-700 hover:bg-red-600 disabled:bg-gray-700 text-white font-bold px-2 py-1 rounded"
-                          >
-                            {isRemoving ? "..." : "Confirm"}
-                          </button>
-                          <button
-                            onClick={() => setConfirmRemoveId(null)}
-                            className="text-xs bg-gray-700 hover:bg-gray-600 text-white font-bold px-2 py-1 rounded"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => setConfirmRemoveId(member.user_id)}
-                          className="text-xs text-gray-600 hover:text-red-400 font-bold px-1.5 py-1 rounded hover:bg-red-950 transition-colors"
-                          title="Remove from league"
-                        >
-                          ✕
-                        </button>
-                      )
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-            {spotsLeft > 0 && (
-              <div className="flex items-center gap-3 py-2.5 opacity-40">
-                <div className="w-8 h-8 rounded-full border border-dashed border-gray-600 flex items-center justify-center text-gray-600 text-sm flex-shrink-0">+</div>
-                <span className="text-gray-600 text-sm">{spotsLeft} spot{spotsLeft > 1 ? "s" : ""} remaining</span>
+        {activeTab === "bracket" ? (
+          <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
+            {games.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-gray-500 text-sm">Bracket will be available once playoff teams are set.</p>
               </div>
+            ) : (
+              <BracketView games={games} teams={nflTeams} />
             )}
           </div>
-        </div>
+        ) : (
+          <>
+            <div className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800">
+              <h2 className="font-bold mb-4 text-gray-300 uppercase text-xs tracking-wider">
+                Teams ({members.length}/{league.num_teams})
+              </h2>
+              <div className="flex flex-col gap-1">
+                {members.map((member) => {
+                  const isMe = member.user_id === user?.id;
+                  const isEditingThisName = isMe && editingTeamName;
+                  const isThisCommissioner = member.user_id === league.commissioner_user_id;
+                  const isConfirmingRemove = confirmRemoveId === member.user_id;
+                  const isRemoving = removingMemberId === member.user_id;
 
-        {/* Commissioner Tools Link */}
-        {isCommissioner && (
-          <button
-            onClick={() => router.push(`/commissioner-tools/${leagueId}`)}
-            className="w-full bg-gray-900 hover:bg-gray-800 border border-dashed border-gray-700 rounded-xl p-5 flex items-center justify-between transition-colors"
-          >
-            <div className="text-left">
-              <p className="font-bold text-white">⚙ Commissioner Tools</p>
-              <p className="text-gray-500 text-xs mt-0.5">Invite link, conferences, scoring, manual draft, email league</p>
+                  return (
+                    <div key={member.id} className="flex items-center gap-3 py-2.5 border-b border-gray-800 last:border-0">
+                      <div className="relative flex-shrink-0">
+                        <Avatar member={member} size="md" />
+                        {isMe && (
+                          <button onClick={() => setShowAvatarModal(true)} className="absolute -bottom-1 -right-1 w-5 h-5 bg-gray-600 hover:bg-gray-500 rounded-full flex items-center justify-center text-xs" title="Edit avatar">
+                            ✏
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        {isEditingThisName ? (
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={teamNameInput}
+                              onChange={(e) => setTeamNameInput(e.target.value)}
+                              onKeyDown={(e) => e.key === "Enter" && handleSaveTeamName()}
+                              maxLength={50}
+                              autoFocus
+                              className="bg-gray-800 text-white px-2 py-1 rounded text-sm font-bold border border-gray-700 focus:outline-none focus:border-green-500 min-w-0 flex-1"
+                            />
+                            <button onClick={handleSaveTeamName} disabled={savingTeamName || !teamNameInput.trim()} className="text-xs bg-green-600 hover:bg-green-500 disabled:bg-gray-700 text-white font-bold px-2.5 py-1 rounded flex-shrink-0">
+                              {savingTeamName ? "..." : "Save"}
+                            </button>
+                            <button onClick={() => { setEditingTeamName(false); setTeamNameInput(member.team_name); }} className="text-xs text-gray-500 hover:text-white px-1 flex-shrink-0">✕</button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold truncate">{member.team_name}</span>
+                            {isMe && (
+                              <>
+                                <span className="hidden sm:inline text-xs text-gray-500">(You)</span>
+                                <button onClick={() => { setEditingTeamName(true); setTeamNameInput(member.team_name); }} className="text-gray-600 hover:text-white text-xs flex-shrink-0" title="Edit team name">✏</button>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {getConferenceBadge(member)}
+                        {isThisCommissioner && (
+                          <span className="text-xs bg-green-900 text-green-400 w-5 h-5 sm:w-auto sm:h-auto sm:px-2 sm:py-0.5 rounded-full flex items-center justify-center font-bold">
+                            <span className="sm:hidden">C</span>
+                            <span className="hidden sm:inline">Commissioner</span>
+                          </span>
+                        )}
+                        {isCommissioner && !isMe && !isThisCommissioner && !isDraftStarted && (
+                          isConfirmingRemove ? (
+                            <div className="flex gap-1">
+                              <button onClick={() => handleRemoveMember(member.user_id)} disabled={isRemoving} className="text-xs bg-red-700 hover:bg-red-600 disabled:bg-gray-700 text-white font-bold px-2 py-1 rounded">
+                                {isRemoving ? "..." : "Confirm"}
+                              </button>
+                              <button onClick={() => setConfirmRemoveId(null)} className="text-xs bg-gray-700 hover:bg-gray-600 text-white font-bold px-2 py-1 rounded">Cancel</button>
+                            </div>
+                          ) : (
+                            <button onClick={() => setConfirmRemoveId(member.user_id)} className="text-xs text-gray-600 hover:text-red-400 font-bold px-1.5 py-1 rounded hover:bg-red-950 transition-colors" title="Remove from league">✕</button>
+                          )
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+                {spotsLeft > 0 && (
+                  <div className="flex items-center gap-3 py-2.5 opacity-40">
+                    <div className="w-8 h-8 rounded-full border border-dashed border-gray-600 flex items-center justify-center text-gray-600 text-sm flex-shrink-0">+</div>
+                    <span className="text-gray-600 text-sm">{spotsLeft} spot{spotsLeft > 1 ? "s" : ""} remaining</span>
+                  </div>
+                )}
+              </div>
             </div>
-            <span className="text-gray-600">→</span>
-          </button>
+
+            {isCommissioner && (
+              <button onClick={() => router.push(`/commissioner-tools/${leagueId}`)} className="w-full bg-gray-900 hover:bg-gray-800 border border-dashed border-gray-700 rounded-xl p-5 flex items-center justify-between transition-colors">
+                <div className="text-left">
+                  <p className="font-bold text-white">⚙ Commissioner Tools</p>
+                  <p className="text-gray-500 text-xs mt-0.5">Invite link, conferences, scoring, manual draft, email league</p>
+                </div>
+                <span className="text-gray-600">→</span>
+              </button>
+            )}
+          </>
         )}
       </div>
     </main>
