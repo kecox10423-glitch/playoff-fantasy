@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/admin/sync-playoff",
-      "schedule": "*/15 * * * *"
+      "schedule": "0 4 * * *"
     }
   ]
 }
