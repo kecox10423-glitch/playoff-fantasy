@@ -232,11 +232,14 @@ export default function LeaguePage() {
       const { data: membersData } = await supabase
         .from("league_members").select("*").eq("league_id", leagueId);
 
-      const { data: gamesData } = await supabase
+      const { data: gamesData, error: gamesError } = await supabase
         .from("playoff_games").select("*").eq("season", 2026).order("game_date");
 
-      const { data: teamsData } = await supabase
+      const { data: teamsData, error: teamsError } = await supabase
         .from("nfl_teams").select("*").eq("season", 2026);
+
+      console.log("GAMES:", gamesData, "GAMES_ERROR:", gamesError);
+      console.log("TEAMS:", teamsData, "TEAMS_ERROR:", teamsError);
 
       setLeague(leagueData);
       setMembers(membersData || []);
