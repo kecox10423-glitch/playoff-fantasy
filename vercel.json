@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/admin/sync-playoff",
+      "schedule": "*/15 * * * *"
+    }
+  ]
+}
