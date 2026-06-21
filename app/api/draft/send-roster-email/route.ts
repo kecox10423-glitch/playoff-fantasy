@@ -60,6 +60,8 @@ function buildRosterEmailHtml(
     `)
   ).join("");
 
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://playoff-fantasy-zeta.vercel.app";
+
   return `
 <!DOCTYPE html>
 <html>
@@ -71,22 +73,46 @@ function buildRosterEmailHtml(
 
         <!-- Header -->
         <tr>
-          <td style="background:#111827; padding:0 0 24px 0; text-align:center;">
+          <td style="background:#111827; padding:0 0 8px 0; text-align:center;">
+
+            <!-- Logo -->
+            <img
+              src="${siteUrl}/apple-touch-icon.png"
+              alt="PFFL"
+              width="56"
+              height="56"
+              style="border-radius:12px; margin-bottom:14px; display:block; margin-left:auto; margin-right:auto;"
+            />
+
+            <!-- Pill -->
             <div style="display:inline-block; background:#15803d; border-radius:8px; padding:6px 14px; margin-bottom:16px;">
               <span style="color:#ffffff; font-size:12px; font-weight:800; letter-spacing:0.1em;">🏈 PLAYOFF FANTASY</span>
             </div>
-            <h1 style="color:#ffffff; font-size:28px; font-weight:900; margin:0 0 8px 0; letter-spacing:-0.02em;">
+
+            <!-- Title -->
+            <h1 style="color:#ffffff; font-size:30px; font-weight:900; margin:0 0 6px 0; letter-spacing:-0.02em;">
               Your Draft Is In
             </h1>
-            <p style="color:#9ca3af; font-size:14px; margin:0;">
-              <strong style="color:#d1d5db;">${teamName}</strong> · ${leagueName}
+
+            <!-- Subline -->
+            <p style="color:#6b7280; font-size:13px; margin:0 0 12px 0;">
+              Playoffs start soon. Here's your roster.
             </p>
+
+            <!-- Team / League -->
+            <p style="margin:0 0 24px 0;">
+              <span style="color:#ffffff; font-size:17px; font-weight:900; letter-spacing:-0.01em;">${teamName}</span>
+              <span style="color:#4b5563; font-size:13px; font-weight:400;"> · ${leagueName}</span>
+            </p>
+
+            <!-- Divider -->
+            <div style="height:1px; background:#1f2937; margin:0 0 0 0;"></div>
           </td>
         </tr>
 
         <!-- Roster Table -->
         <tr>
-          <td style="background:#1f2937; border-radius:12px; overflow:hidden;">
+          <td style="background:#1f2937; border-radius:0 0 12px 12px; overflow:hidden;">
             <table width="100%" cellpadding="0" cellspacing="0">
               <tr style="background:#111827;">
                 <td style="padding:10px 16px;">
@@ -106,7 +132,7 @@ function buildRosterEmailHtml(
 
         <!-- CTA -->
         <tr>
-          <td style="padding:24px 0 0 0; text-align:center;">
+          <td style="padding:28px 0 0 0; text-align:center;">
             <a href="${leagueUrl}" style="
               display:inline-block;
               background:#15803d;
@@ -125,7 +151,7 @@ function buildRosterEmailHtml(
         <tr>
           <td style="padding:24px 0 0 0; text-align:center;">
             <p style="color:#4b5563; font-size:12px; margin:0;">
-              Playoff Fantasy Football · playofffantasy.com
+              Playoff Fantasy Football · <a href="${siteUrl}" style="color:#4b5563;">playofffantasy.com</a>
             </p>
           </td>
         </tr>
@@ -187,16 +213,15 @@ export async function POST(req: NextRequest) {
     const playerMap: { [id: number]: any } = {};
     (players || []).forEach(p => { playerMap[p.id] = p; });
 
-    const leagueUrl = `${process.env.NEXT_PUBLIC_SITE_URL || "https://playoff-fantasy-zeta.vercel.app"}/league/${leagueId}`;
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://playoff-fantasy-zeta.vercel.app";
+    const leagueUrl = `${siteUrl}/league/${leagueId}`;
 
     let sentCount = 0;
     const errors: string[] = [];
 
     for (const member of members) {
-      // Get this member's picks
       const memberPicks = picks.filter(p => p.user_id === member.user_id);
 
-      // Build roster sorted by position
       const roster = memberPicks
         .map(pick => {
           const player = playerMap[pick.player_id];
@@ -212,12 +237,10 @@ export async function POST(req: NextRequest) {
         })
         .filter(Boolean) as any[];
 
-      // Sort by position order
       roster.sort((a, b) =>
         POSITION_ORDER.indexOf(a.position) - POSITION_ORDER.indexOf(b.position)
       );
 
-      // Get member email
       const { data: userData } = await supabaseAdmin.auth.admin.getUserById(member.user_id);
       const email = userData?.user?.email;
       if (!email) {
@@ -239,7 +262,7 @@ export async function POST(req: NextRequest) {
             email: "playofffantasyfootballapp@gmail.com",
             name: "Playoff Fantasy Football",
           },
-          subject: `🏈 Your ${league.name} Draft Results`,
+          subject: `🏈 ${member.team_name}'s ${league.name} Draft Results`,
           content: [{ type: "text/html", value: html }],
         }),
       });
