@@ -171,6 +171,7 @@ export default function DraftPage() {
   const autoPickEnabledRef = useRef(false);
   const pickStartTimeRef = useRef<string | null>(null);
   const autoPickFiredRef = useRef(false);
+  const lastOfflineAutoPickRef = useRef<number>(-1);
 
   const router = useRouter();
   const params = useParams();
@@ -546,19 +547,21 @@ export default function DraftPage() {
     if (myTurn && !wasMyTurnRef.current) {
       playOnClockAlert();
       if (autoPickEnabledRef.current) {
-        // My turn + auto mode on: pick immediately
         setTimeout(() => executeAutoPick(user.id), 300);
       }
-    } else if (!myTurn && owner && ownerIsOffline && !wasMyTurnRef.current) {
-      // Owner is offline: autopick for them after 1.5s
+    } else if (!myTurn && owner && ownerIsOffline) {
+      // Owner is offline: autopick for them after 1.5s, once per pick number
       const offlineOwnerUserId = owner.user_id;
-      setTimeout(() => {
-        // Confirm they still haven't picked before firing
-        const latestPicks = picksRef.current;
-        if (latestPicks.length === currentPicks.length) {
-          executeAutoPick(offlineOwnerUserId);
-        }
-      }, 1500);
+      const expectedPickNumber = currentPicks.length + 1;
+      if (lastOfflineAutoPickRef.current !== expectedPickNumber) {
+        lastOfflineAutoPickRef.current = expectedPickNumber;
+        setTimeout(() => {
+          const latestPicks = picksRef.current;
+          if (latestPicks.length === currentPicks.length) {
+            executeAutoPick(offlineOwnerUserId);
+          }
+        }, 1500);
+      }
     }
 
     wasMyTurnRef.current = myTurn;
