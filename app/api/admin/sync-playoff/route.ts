@@ -19,8 +19,6 @@ const DIV_DATES = { AFC: "2027-01-18", NFC: "2027-01-19" };
 const CC_DATE   = "2027-01-26";
 const SB_DATE   = "2027-02-02";
 
-// Our fake bracket rounds map to real NFL regular season weeks
-// WC = week 1, DIV = week 2, CC = week 3, SB = week 4
 const ROUND_TO_NFL_WEEK: { [r: string]: number } = {
   WC: 1, DIV: 2, CC: 3, SB: 4,
 };
@@ -28,7 +26,6 @@ const ROUND_TO_DB_WEEK: { [r: string]: number } = {
   WC: 1, DIV: 2, CC: 3, SB: 4,
 };
 
-// ESPN abbreviation -> our DB abbreviation
 const ESPN_ABR_MAP: { [k: string]: string } = {
   BAL: "BAL", BUF: "BUF", LAC: "LAC", NE: "NE",
   KC: "KC", HOU: "HOU", DEN: "DEN",
@@ -125,17 +122,17 @@ function calcPlayerPoints(stats: any, position: string, s: any): number {
   }
 
   let pts = 0;
-  pts += (stats.pass_yards   || 0) / s.passing_yards_per_point;
-  pts += (stats.pass_tds     || 0) * s.passing_td;
-  pts += (stats.interceptions|| 0) * s.interception;
-  pts += (stats.rush_yards   || 0) / s.rushing_yards_per_point;
-  pts += (stats.rush_tds     || 0) * s.rushing_td;
+  pts += (stats.pass_yards    || 0) / s.passing_yards_per_point;
+  pts += (stats.pass_tds      || 0) * s.passing_td;
+  pts += (stats.interceptions || 0) * s.interception;
+  pts += (stats.rush_yards    || 0) / s.rushing_yards_per_point;
+  pts += (stats.rush_tds      || 0) * s.rushing_td;
   if      ((stats.rush_yards || 0) >= 200) pts += s.rushing_200_bonus;
   else if ((stats.rush_yards || 0) >= 150) pts += s.rushing_150_bonus;
   else if ((stats.rush_yards || 0) >= 100) pts += s.rushing_100_bonus;
-  pts += (stats.receptions   || 0) * s.receiving_reception;
-  pts += (stats.rec_yards    || 0) / s.receiving_yards_per_point;
-  pts += (stats.rec_tds      || 0) * s.receiving_td;
+  pts += (stats.receptions || 0) * s.receiving_reception;
+  pts += (stats.rec_yards  || 0) / s.receiving_yards_per_point;
+  pts += (stats.rec_tds    || 0) * s.receiving_td;
   if      ((stats.rec_yards || 0) >= 200) pts += s.receiving_200_bonus;
   else if ((stats.rec_yards || 0) >= 150) pts += s.receiving_150_bonus;
   else if ((stats.rec_yards || 0) >= 100) pts += s.receiving_100_bonus;
@@ -155,7 +152,7 @@ function buildFloatingMatchups(
   ];
 }
 
-export async function POST(req: NextRequest) {
+async function runSync(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
     const { userId } = body;
@@ -191,8 +188,7 @@ export async function POST(req: NextRequest) {
       teamById[t.id] = t;
     });
 
-    // ── 2. Pull real NFL team scores from ESPN for each regular season week
-    // teamScoresByWeek[week][abbr] = points scored in that real NFL game
+    // ── 2. Pull real NFL team scores from ESPN ────────────────────────────
     const teamScoresByWeek: { [week: number]: { [abbr: string]: number } } = {};
     const weekIsComplete: { [week: number]: boolean } = {};
 
@@ -225,7 +221,6 @@ export async function POST(req: NextRequest) {
           const homeAbbr = ESPN_ABR_MAP[home.team?.abbreviation] || home.team?.abbreviation;
           const awayAbbr = ESPN_ABR_MAP[away.team?.abbreviation] || away.team?.abbreviation;
 
-          // Only record scores for our 14 playoff teams
           if (teamByAbbr[homeAbbr]) {
             teamScoresByWeek[nflWeek][homeAbbr] = parseFloat(home.score || "0");
           }
@@ -240,15 +235,13 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ── 3. Determine bracket winners by comparing NFL team scores ─────────
-    // For each bracket matchup, look up each team's real NFL score that week
-    // Higher score advances — tie goes to higher seed (lower seed number)
+    // ── 3. Determine bracket winners by NFL team scores ───────────────────
     const newlyEliminated: number[] = [];
     const processedRounds = new Set<string>();
 
     for (const round of ROUND_ORDER) {
       const nflWeek = ROUND_TO_NFL_WEEK[round];
-      if (!weekIsComplete[nflWeek]) continue; // Week not finished yet
+      if (!weekIsComplete[nflWeek]) continue;
 
       const bracketGames = (dbGames || []).filter(g => g.round === round);
       if (bracketGames.length === 0) continue;
@@ -256,7 +249,7 @@ export async function POST(req: NextRequest) {
       let allGamesDecided = true;
 
       for (const game of bracketGames) {
-        if (game.winner_team_id) continue; // Already decided
+        if (game.winner_team_id) continue;
 
         const homeTeam = teamById[game.home_team_id];
         const awayTeam = teamById[game.away_team_id];
@@ -265,7 +258,6 @@ export async function POST(req: NextRequest) {
         const homeNflScore = teamScoresByWeek[nflWeek]?.[homeTeam.abbreviation] ?? null;
         const awayNflScore = teamScoresByWeek[nflWeek]?.[awayTeam.abbreviation] ?? null;
 
-        // Need both teams to have played
         if (homeNflScore === null || awayNflScore === null) {
           allGamesDecided = false;
           continue;
@@ -301,7 +293,6 @@ export async function POST(req: NextRequest) {
 
     // ── 4. Eliminate losing teams + their players ─────────────────────────
     for (const teamId of newlyEliminated) {
-      // Find which round they lost
       const lostGame = (dbGames || []).find(g =>
         (g.home_team_id === teamId || g.away_team_id === teamId) &&
         g.winner_team_id && g.winner_team_id !== teamId
@@ -319,8 +310,7 @@ export async function POST(req: NextRequest) {
         .eq("nfl_team_id", teamId);
     }
 
-    // ── 5. Pull player stats from Sleeper for completed rounds ────────────
-    // Sleeper regular season weeks match directly: week 1, 2, 3, 4
+    // ── 5. Pull player stats from Sleeper ────────────────────────────────
     const { data: players } = await supabaseAdmin
       .from("players")
       .select("*")
@@ -361,7 +351,6 @@ export async function POST(req: NextRequest) {
 
       if (!weekIsComplete[nflWeek]) continue;
 
-      // Skip if already synced
       const { data: existingStats } = await supabaseAdmin
         .from("player_stats")
         .select("id")
@@ -511,7 +500,6 @@ export async function POST(req: NextRequest) {
               }, { onConflict: "league_id,user_id,week" });
           }
 
-          // Update standings
           const { data: allScores } = await supabaseAdmin
             .from("scores")
             .select("*")
@@ -628,4 +616,12 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
+}
+
+export async function POST(req: NextRequest) {
+  return runSync(req);
+}
+
+export async function GET(req: NextRequest) {
+  return runSync(req);
 }
