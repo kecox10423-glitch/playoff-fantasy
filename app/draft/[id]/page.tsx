@@ -486,7 +486,6 @@ export default function DraftPage() {
     };
   }, []);
 
-  // Universal timer — fires autopick at t=0 only for the current user's own turn
   useEffect(() => {
     if (loading) return;
     if (league?.draft_status !== "IN_PROGRESS") return;
@@ -516,7 +515,6 @@ export default function DraftPage() {
         const owner = currentMembers[index];
         if (!owner) return;
 
-        // Offline owner autopick is handled immediately by the picks useEffect below
         if (owner.user_id === currentUser.id) {
           executeAutoPick(currentUser.id);
         }
@@ -528,7 +526,6 @@ export default function DraftPage() {
 
   useEffect(() => { autoPickFiredRef.current = false; }, [picks.length]);
 
-  // On-clock alert + immediate autopick for auto mode OR offline owner
   useEffect(() => {
     if (loading || league?.draft_status !== "IN_PROGRESS") return;
     const currentPicks = picksRef.current;
@@ -550,7 +547,6 @@ export default function DraftPage() {
         setTimeout(() => executeAutoPick(user.id), 300);
       }
     } else if (!myTurn && owner && ownerIsOffline) {
-      // Owner is offline: autopick for them after 1.5s, once per pick number
       const offlineOwnerUserId = owner.user_id;
       const expectedPickNumber = currentPicks.length + 1;
       if (lastOfflineAutoPickRef.current !== expectedPickNumber) {
@@ -567,7 +563,6 @@ export default function DraftPage() {
     wasMyTurnRef.current = myTurn;
   }, [picks, league?.draft_status]);
 
-  // Countdown timer — auto-starts draft when it hits zero
   useEffect(() => {
     if (loading) return;
     const isPreDraft = league?.draft_status !== "IN_PROGRESS" && league?.draft_status !== "COMPLETED";
@@ -607,7 +602,6 @@ export default function DraftPage() {
     return () => { clearInterval(countdownRef.current); setCountdownWarning(false); };
   }, [loading, league?.draft_status, league?.draft_time]);
 
-  // Draft complete
   useEffect(() => {
     if (loading || !league || !user) return;
     const totalPicks = membersRef.current.length * TOTAL_PICKS_PER_TEAM;
@@ -799,10 +793,8 @@ export default function DraftPage() {
   return (
     <div className="h-screen bg-gray-950 text-white flex flex-col overflow-hidden">
 
-      {/* TOP BAR */}
       <div className="bg-gray-900 border-b border-gray-800 flex-shrink-0">
 
-        {/* Row 1 */}
         <div className="px-3 py-2 flex items-center justify-between border-b border-gray-800 gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <PFFLLogo size={24} />
@@ -862,7 +854,6 @@ export default function DraftPage() {
           </div>
         </div>
 
-        {/* Row 2: Status */}
         <div className={`px-3 py-2 flex items-center justify-between gap-2 ${
           countdownWarning && isPreDraft ? "bg-red-950" :
           isMyTurn() && !draftComplete && !isPreDraft ? "bg-green-900" : ""
@@ -917,7 +908,6 @@ export default function DraftPage() {
           </div>
         )}
 
-        {/* Row 3: Snake Strip */}
         <div className="border-t border-gray-800 px-3 py-2 overflow-x-auto">
           {isPreDraft ? (
             <div className="flex items-center gap-2 min-w-max">
@@ -937,7 +927,7 @@ export default function DraftPage() {
               })}
             </div>
           ) : draftComplete ? (
-            <p className="text-gray-600 text-xs text-center py-1">Draft complete — all picks are in!</p>
+            <p className="text-gray-600 text-xs text-center py-1">🏆 Draft Complete — Good Luck!</p>
           ) : (
             <div className="flex items-center gap-1 min-w-max">
               <div className="flex flex-col items-center mr-2 flex-shrink-0">
@@ -977,7 +967,6 @@ export default function DraftPage() {
           )}
         </div>
 
-        {/* Mobile Tabs */}
         <div className="md:hidden flex border-t border-gray-800">
           {(["roster", "players", "board"] as MobileTab[]).map(tab => (
             <button key={tab} onClick={() => setMobileTab(tab)}
@@ -988,10 +977,8 @@ export default function DraftPage() {
         </div>
       </div>
 
-      {/* MAIN CONTENT */}
       <div className="flex flex-1 overflow-hidden">
 
-        {/* LEFT: My Roster */}
         <div className={`${mobileTab === "roster" ? "flex" : "hidden"} md:flex w-full md:w-48 flex-shrink-0 bg-gray-900 md:border-r border-gray-800 flex-col`}>
           <div className="px-3 py-2 border-b border-gray-800 flex-shrink-0">
             <p className="text-xs font-black text-gray-400 uppercase tracking-wider">
@@ -1025,7 +1012,6 @@ export default function DraftPage() {
           </div>
         </div>
 
-        {/* CENTER: Players */}
         <div className={`${mobileTab === "players" ? "flex" : "hidden"} md:flex flex-1 flex-col overflow-hidden`}>
 
           {queuedPlayers.length > 0 && (
@@ -1090,7 +1076,6 @@ export default function DraftPage() {
           </div>
 
           <div className="overflow-y-auto flex-1 pb-20 md:pb-6">
-            {/* Desktop */}
             <div className="hidden md:block overflow-x-auto">
               {filteredPlayers.map((player, index) => {
                 const picked = isPickedAlready(player.id);
@@ -1137,7 +1122,6 @@ export default function DraftPage() {
               })}
             </div>
 
-            {/* Mobile */}
             <div className="md:hidden">
               {filteredPlayers.map((player, index) => {
                 const picked = isPickedAlready(player.id);
@@ -1183,7 +1167,6 @@ export default function DraftPage() {
           </div>
         </div>
 
-        {/* RIGHT: Board + Chat */}
         <div className={`${mobileTab === "board" ? "flex" : "hidden"} md:flex w-full md:w-60 flex-shrink-0 bg-gray-900 md:border-l border-gray-800 flex-col`}>
           <div className="flex border-b border-gray-800 flex-shrink-0">
             <button onClick={() => setRightPanel("board")}
