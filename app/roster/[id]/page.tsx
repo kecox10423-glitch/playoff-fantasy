@@ -146,6 +146,7 @@ export default function RosterPage() {
   const [players, setPlayers] = useState<any[]>([]);
   const [picks, setPicks] = useState<any[]>([]);
   const [allStats, setAllStats] = useState<any[]>([]);
+  const [playoffGames, setPlayoffGames] = useState<any[]>([]);
   const [user, setUser] = useState<any>(null);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -170,12 +171,14 @@ export default function RosterPage() {
         { data: playersData },
         { data: picksData },
         { data: statsData },
+        { data: gamesData },
       ] = await Promise.all([
         supabase.from("leagues").select("*").eq("id", leagueId).single(),
         supabase.from("league_members").select("*").eq("league_id", leagueId).order("draft_position"),
         supabase.from("players").select("*, nfl_teams(name, abbreviation, seed, is_eliminated)").eq("season", 2026),
         supabase.from("draft_picks").select("*").eq("league_id", leagueId),
         supabase.from("player_stats").select("*").eq("season", 2026),
+        supabase.from("playoff_games").select("*").eq("season", 2026),
       ]);
 
       setLeague(leagueData);
@@ -183,6 +186,7 @@ export default function RosterPage() {
       setPlayers(playersData || []);
       setPicks(picksData || []);
       setAllStats(statsData || []);
+      setPlayoffGames(gamesData || []);
       setSelectedUserId(teamParam || user.id);
       setLoading(false);
     }
@@ -219,6 +223,32 @@ export default function RosterPage() {
       const t = getPlayerSeasonTotal(p.id);
       return sum + (t || 0);
     }, 0);
+  }
+
+  function getCurrentRound(): string {
+    const rounds = ["WC", "DIV", "CC", "SB"];
+    for (const round of rounds) {
+      const roundGames = playoffGames.filter(g => g.round === round);
+      if (roundGames.length > 0 && roundGames.some(g => !g.winner_team_id)) return round;
+      if (roundGames.length > 0 && roundGames.every(g => g.winner_team_id)) continue;
+    }
+    return "WC";
+  }
+
+  function getOpp(player: any): { abbr: string; time: string } | null {
+    if (player.is_active === false) return null;
+    const teamId = player.nfl_team_id;
+    const round = getCurrentRound();
+    const game = playoffGames.find(g =>
+      g.round === round && (g.home_team_id === teamId || g.away_team_id === teamId)
+    );
+    if (!game) return null;
+    const oppId = game.home_team_id === teamId ? game.away_team_id : game.home_team_id;
+    const oppTeam = players.find(p => p.nfl_team_id === oppId)?.nfl_teams;
+    return {
+      abbr: oppTeam?.abbreviation || "TBD",
+      time: game.game_time || "",
+    };
   }
 
   if (loading) return (
@@ -346,7 +376,7 @@ export default function RosterPage() {
                       >
                         <span>POS</span>
                         <span>PLAYER</span>
-                        <span className="text-center">DRAFTED</span>
+                        <span className="text-center">OPP</span>
                         {group.cols.map(col => (
                           <span key={col.header} className={`text-right ${(col as any).highlight ? "text-green-400" : ""}`}>
                             {col.header}
@@ -360,6 +390,7 @@ export default function RosterPage() {
                       .map((player: any) => {
                         const stats = getStats(player.id, weekOrNull);
                         const isEliminated = player.is_active === false;
+                        const opp = getOpp(player);
 
                         return (
                           <div
@@ -386,8 +417,16 @@ export default function RosterPage() {
                             </div>
 
                             <div className="text-center">
-                              <p className="text-xs text-gray-400 font-bold">Rd {player.round}</p>
-                              <p className="text-xs text-gray-600">Pk {player.pick_number}</p>
+                              {isEliminated ? (
+                                <p className="text-xs text-red-500 font-bold">OUT</p>
+                              ) : opp ? (
+                                <>
+                                  <p className="text-xs text-gray-300 font-bold">vs {opp.abbr}</p>
+                                  <p className="text-xs text-gray-600">{opp.time}</p>
+                                </>
+                              ) : (
+                                <p className="text-xs text-gray-600">—</p>
+                              )}
                             </div>
 
                             {group.cols.map(col => {

@@ -53,7 +53,6 @@ export default function CommissionerToolsPage() {
 
       if (leagueData?.draft_time) {
         const d = parseUTCTimestamp(leagueData.draft_time);
-        // Date input value (YYYY-MM-DD) in local time
         const yyyy = d.getFullYear();
         const mm = String(d.getMonth() + 1).padStart(2, "0");
         const dd = String(d.getDate()).padStart(2, "0");
@@ -66,7 +65,10 @@ export default function CommissionerToolsPage() {
         if (hours === 0) hours = 12;
 
         setDraftHour(String(hours));
-        setDraftMinute(minutes >= 30 ? "30" : "00");
+        if (minutes >= 45) setDraftMinute("45");
+        else if (minutes >= 30) setDraftMinute("30");
+        else if (minutes >= 15) setDraftMinute("15");
+        else setDraftMinute("00");
         setDraftAmPm(ampm);
       }
 
@@ -296,7 +298,9 @@ export default function CommissionerToolsPage() {
                 className="bg-gray-800 text-white p-2.5 rounded-lg text-sm border border-gray-700 focus:outline-none focus:border-green-500"
               >
                 <option value="00">:00</option>
+                <option value="15">:15</option>
                 <option value="30">:30</option>
+                <option value="45">:45</option>
               </select>
               <select
                 value={draftAmPm}

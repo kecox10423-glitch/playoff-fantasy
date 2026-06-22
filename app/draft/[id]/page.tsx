@@ -34,17 +34,23 @@ function createBeep(frequency: number, duration: number, volume: number = 0.3) {
 }
 
 function playOnClockAlert() {
-  setTimeout(() => createBeep(440, 0.15, 0.4), 0);
-  setTimeout(() => createBeep(550, 0.15, 0.4), 180);
-  setTimeout(() => createBeep(660, 0.3, 0.5), 360);
+  setTimeout(() => createBeep(440, 0.2, 0.7), 0);
+  setTimeout(() => createBeep(550, 0.2, 0.7), 200);
+  setTimeout(() => createBeep(660, 0.4, 0.8), 400);
 }
-function playUrgentBeep() { createBeep(880, 0.2, 0.4); }
-function playTickBeep() { createBeep(660, 0.08, 0.25); }
+function playUrgentBeep() { createBeep(880, 0.25, 0.7); }
+function playTickBeep() { createBeep(660, 0.1, 0.4); }
+function playPickMadeSound() {
+  setTimeout(() => createBeep(523, 0.15, 0.6), 0);
+  setTimeout(() => createBeep(659, 0.15, 0.6), 120);
+  setTimeout(() => createBeep(784, 0.15, 0.6), 240);
+  setTimeout(() => createBeep(1047, 0.3, 0.7), 360);
+}
 function playDraftOpeningAlert() {
-  setTimeout(() => createBeep(523, 0.2, 0.5), 0);
-  setTimeout(() => createBeep(659, 0.2, 0.5), 200);
-  setTimeout(() => createBeep(784, 0.2, 0.5), 400);
-  setTimeout(() => createBeep(1047, 0.4, 0.6), 600);
+  setTimeout(() => createBeep(523, 0.2, 0.7), 0);
+  setTimeout(() => createBeep(659, 0.2, 0.7), 200);
+  setTimeout(() => createBeep(784, 0.2, 0.7), 400);
+  setTimeout(() => createBeep(1047, 0.4, 0.8), 600);
 }
 
 function PFFLLogo({ size = 28 }: { size?: number }) {
@@ -156,6 +162,7 @@ export default function DraftPage() {
   const [autoPickEnabled, setAutoPickEnabled] = useState(false);
   const [rosterEmailSent, setRosterEmailSent] = useState(false);
   const [positionError, setPositionError] = useState<string | null>(null);
+  const [draftedFlash, setDraftedFlash] = useState<{ name: string; position: string } | null>(null);
 
   const timerRef = useRef<any>(null);
   const countdownRef = useRef<any>(null);
@@ -711,6 +718,13 @@ export default function DraftPage() {
     pickStartTimeRef.current = pickStartTime;
     setTimeLeft(TIMER_SECONDS);
 
+    // Play sound and show drafted flash
+    playPickMadeSound();
+    if (player) {
+      setDraftedFlash({ name: player.name, position: player.position });
+      setTimeout(() => setDraftedFlash(null), 1800);
+    }
+
     if (queue.includes(playerId)) {
       const updated = queue.filter(id => id !== playerId);
       setQueue(updated);
@@ -792,6 +806,17 @@ export default function DraftPage() {
 
   return (
     <div className="h-screen bg-gray-950 text-white flex flex-col overflow-hidden">
+
+      {/* DRAFTED FLASH OVERLAY */}
+      {draftedFlash && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+          <div className="bg-green-600 text-white px-10 py-6 rounded-2xl shadow-2xl animate-bounce text-center">
+            <p className="text-4xl font-black">✅ Drafted!</p>
+            <p className="text-xl font-bold mt-1">{draftedFlash.name}</p>
+            <p className="text-sm text-green-200 mt-0.5">{draftedFlash.position}</p>
+          </div>
+        </div>
+      )}
 
       <div className="bg-gray-900 border-b border-gray-800 flex-shrink-0">
 

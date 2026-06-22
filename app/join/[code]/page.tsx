@@ -65,17 +65,27 @@ export default function JoinLeague() {
       return;
     }
 
-    const { error } = await supabase.from("league_members").insert({
+    const { error: insertError } = await supabase.from("league_members").insert({
       league_id: league.id,
       user_id: user.id,
       team_name: teamName.trim(),
       draft_position: members.length + 1,
     });
 
-    if (error) {
-      setError(error.message);
+    if (insertError) {
+      setError(insertError.message);
       setJoining(false);
       return;
+    }
+
+    // If league is now full, randomize draft order
+    const newCount = members.length + 1;
+    if (newCount >= league.num_teams) {
+      await fetch("/api/randomize-draft-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leagueId: league.id }),
+      });
     }
 
     router.push(`/league/${league.id}`);
