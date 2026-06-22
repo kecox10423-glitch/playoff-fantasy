@@ -57,6 +57,11 @@ function fmt(val: any, decimals = 0): string {
   return decimals > 0 ? n.toFixed(decimals) : String(Math.round(n));
 }
 
+// All groups use the same MAX number of stat cols (8) so columns align across groups.
+// Shorter groups pad with empty cols.
+const MAX_STAT_COLS = 8;
+const STAT_COL_WIDTH = "4rem";
+
 const POSITION_GROUPS = [
   {
     label: "QUARTERBACKS",
@@ -82,6 +87,7 @@ const POSITION_GROUPS = [
       { header: "REC", fn: (s: any) => fmt(s?.receptions) },
       { header: "RECYDS", fn: (s: any) => fmt(s?.rec_yards) },
       { header: "RECTD", fn: (s: any) => fmt(s?.rec_tds) },
+      { header: "", fn: () => "" },
       { header: "FPTS", fn: (s: any) => fmt(s?.fantasy_points, 1), highlight: true },
     ],
   },
@@ -94,6 +100,8 @@ const POSITION_GROUPS = [
       { header: "RECTD", fn: (s: any) => fmt(s?.rec_tds) },
       { header: "RYDS", fn: (s: any) => fmt(s?.rush_yards) },
       { header: "RTD", fn: (s: any) => fmt(s?.rush_tds) },
+      { header: "", fn: () => "" },
+      { header: "", fn: () => "" },
       { header: "FPTS", fn: (s: any) => fmt(s?.fantasy_points, 1), highlight: true },
     ],
   },
@@ -104,6 +112,10 @@ const POSITION_GROUPS = [
       { header: "REC", fn: (s: any) => fmt(s?.receptions) },
       { header: "RECYDS", fn: (s: any) => fmt(s?.rec_yards) },
       { header: "RECTD", fn: (s: any) => fmt(s?.rec_tds) },
+      { header: "", fn: () => "" },
+      { header: "", fn: () => "" },
+      { header: "", fn: () => "" },
+      { header: "", fn: () => "" },
       { header: "FPTS", fn: (s: any) => fmt(s?.fantasy_points, 1), highlight: true },
     ],
   },
@@ -131,10 +143,14 @@ const POSITION_GROUPS = [
       { header: "SAF", fn: (s: any) => fmt(s?.dst_safety) },
       { header: "TK", fn: (s: any) => fmt(s?.dst_tackles) },
       { header: "PA", fn: (s: any) => fmt(s?.dst_points_allowed) },
+      { header: "", fn: () => "" },
       { header: "FPTS", fn: (s: any) => fmt(s?.fantasy_points, 1), highlight: true },
     ],
   },
 ];
+
+// Fixed grid: POS(3rem) PLAYER(14rem) OPP(6rem) + 8 stat cols(4rem each)
+const GRID_COLS = `3rem 14rem 6rem ${Array(MAX_STAT_COLS).fill(STAT_COL_WIDTH).join(" ")}`;
 
 const WEEK_LABELS: { [k: number]: string } = {
   1: "Wild Card", 2: "Divisional", 3: "Conf. Championship", 4: "Super Bowl",
@@ -235,20 +251,17 @@ export default function RosterPage() {
     return "WC";
   }
 
-  function getOpp(player: any): { abbr: string; time: string } | null {
-    if (player.is_active === false) return null;
+  function getOpp(player: any): string {
+    if (player.is_active === false) return "OUT";
     const teamId = player.nfl_team_id;
     const round = getCurrentRound();
     const game = playoffGames.find(g =>
       g.round === round && (g.home_team_id === teamId || g.away_team_id === teamId)
     );
-    if (!game) return null;
+    if (!game) return "BYE";
     const oppId = game.home_team_id === teamId ? game.away_team_id : game.home_team_id;
     const oppTeam = players.find(p => p.nfl_team_id === oppId)?.nfl_teams;
-    return {
-      abbr: oppTeam?.abbreviation || "TBD",
-      time: game.game_time || "",
-    };
+    return oppTeam?.abbreviation ? `vs ${oppTeam.abbreviation}` : "TBD";
   }
 
   if (loading) return (
@@ -358,99 +371,113 @@ export default function RosterPage() {
           </div>
         ) : (
           <>
-            {POSITION_GROUPS.map(group => {
-              const groupPlayers = roster.filter((p: any) => group.positions.includes(p.position));
-              if (groupPlayers.length === 0) return null;
+            {/* Single shared header row */}
+            <div className="overflow-x-auto">
+              <div className="bg-gray-800 rounded-t-lg min-w-max">
+                <div
+                  className="grid px-4 py-2 text-xs text-gray-500 font-bold uppercase"
+                  style={{ gridTemplateColumns: GRID_COLS }}
+                >
+                  <span>POS</span>
+                  <span>PLAYER</span>
+                  <span>OPP</span>
+                  {Array(MAX_STAT_COLS).fill(null).map((_, i) => (
+                    <span key={i} className="text-right">—</span>
+                  ))}
+                </div>
+              </div>
 
-              return (
-                <div key={group.label} className="mb-8">
-                  <div className="overflow-x-auto">
-                    <div className="bg-gray-800 rounded-t-lg px-4 py-2 min-w-max">
-                      <span className="text-xs font-black text-gray-400 uppercase tracking-widest">{group.label}</span>
-                    </div>
+              {/* All position groups share the same scroll container */}
+              <div className="min-w-max">
+                {POSITION_GROUPS.map(group => {
+                  const groupPlayers = roster.filter((p: any) => group.positions.includes(p.position));
+                  if (groupPlayers.length === 0) return null;
 
-                    <div className="bg-gray-900 border-b border-gray-700 min-w-max">
+                  return (
+                    <div key={group.label} className="mb-0">
+                      {/* Group label */}
+                      <div className="bg-gray-850 px-4 py-1.5 border-t border-gray-700">
+                        <span className="text-xs font-black text-gray-500 uppercase tracking-widest">{group.label}</span>
+                      </div>
+
+                      {/* Group column headers */}
                       <div
-                        className="grid px-4 py-2 text-xs text-gray-500 font-bold uppercase"
-                        style={{ gridTemplateColumns: `3rem 1fr 5rem ${group.cols.map(() => "5rem").join(" ")}` }}
+                        className="grid px-4 py-1.5 text-xs text-gray-600 font-bold uppercase bg-gray-900 border-b border-gray-800"
+                        style={{ gridTemplateColumns: GRID_COLS }}
                       >
-                        <span>POS</span>
-                        <span>PLAYER</span>
-                        <span className="text-center">OPP</span>
-                        {group.cols.map(col => (
-                          <span key={col.header} className={`text-right ${(col as any).highlight ? "text-green-400" : ""}`}>
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                        {group.cols.map((col, i) => (
+                          <span key={i} className={`text-right ${(col as any).highlight ? "text-green-500" : ""}`}>
                             {col.header}
                           </span>
                         ))}
                       </div>
-                    </div>
 
-                    {groupPlayers
-                      .sort((a: any, b: any) => (a.pick_number || 0) - (b.pick_number || 0))
-                      .map((player: any) => {
-                        const stats = getStats(player.id, weekOrNull);
-                        const isEliminated = player.is_active === false;
-                        const opp = getOpp(player);
+                      {/* Players */}
+                      {groupPlayers
+                        .sort((a: any, b: any) => (a.pick_number || 0) - (b.pick_number || 0))
+                        .map((player: any) => {
+                          const stats = getStats(player.id, weekOrNull);
+                          const isEliminated = player.is_active === false;
+                          const opp = getOpp(player);
 
-                        return (
-                          <div
-                            key={player.id}
-                            className={`grid px-4 py-3 border-b border-gray-800 hover:bg-gray-900 transition-colors min-w-max items-center ${isEliminated ? "opacity-40" : ""}`}
-                            style={{ gridTemplateColumns: `3rem 1fr 5rem ${group.cols.map(() => "5rem").join(" ")}` }}
-                          >
-                            <span className={`text-xs font-black px-1.5 py-0.5 rounded text-center w-fit ${getPositionBadge(player.position)}`}>
-                              {player.position}
-                            </span>
+                          return (
+                            <div
+                              key={player.id}
+                              className={`grid px-4 py-3 border-b border-gray-800 hover:bg-gray-900 transition-colors items-center ${isEliminated ? "opacity-40" : ""}`}
+                              style={{ gridTemplateColumns: GRID_COLS }}
+                            >
+                              <span className={`text-xs font-black px-1.5 py-0.5 rounded text-center w-fit ${getPositionBadge(player.position)}`}>
+                                {player.position}
+                              </span>
 
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2">
-                                <p className={`font-bold text-sm truncate ${isEliminated ? "line-through text-gray-500" : "text-white"}`}>
-                                  {player.name}
+                              <div className="min-w-0 pr-2">
+                                <div className="flex items-center gap-2">
+                                  <p className={`font-bold text-sm truncate ${isEliminated ? "line-through text-gray-500" : "text-white"}`}>
+                                    {player.name}
+                                  </p>
+                                  {isEliminated && (
+                                    <span className="text-xs bg-red-900 text-red-400 px-1.5 py-0.5 rounded flex-shrink-0">ELIM</span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-gray-500">
+                                  {player.nfl_teams?.abbreviation} · Seed {player.nfl_teams?.seed}
                                 </p>
-                                {isEliminated && (
-                                  <span className="text-xs bg-red-900 text-red-400 px-1.5 py-0.5 rounded flex-shrink-0">ELIM</span>
-                                )}
                               </div>
-                              <p className="text-xs text-gray-500">
-                                {player.nfl_teams?.abbreviation} · Seed {player.nfl_teams?.seed}
-                              </p>
-                            </div>
 
-                            <div className="text-center">
-                              {isEliminated ? (
-                                <p className="text-xs text-red-500 font-bold">OUT</p>
-                              ) : opp ? (
-                                <>
-                                  <p className="text-xs text-gray-300 font-bold">vs {opp.abbr}</p>
-                                  <p className="text-xs text-gray-600">{opp.time}</p>
-                                </>
-                              ) : (
-                                <p className="text-xs text-gray-600">—</p>
-                              )}
-                            </div>
+                              <span className={`text-xs font-bold whitespace-nowrap ${
+                                opp === "OUT" ? "text-red-500" :
+                                opp === "BYE" ? "text-blue-400" :
+                                "text-gray-300"
+                              }`}>
+                                {opp}
+                              </span>
 
-                            {group.cols.map(col => {
-                              const val = col.fn(stats);
-                              return (
-                                <span
-                                  key={col.header}
-                                  className={`text-right text-sm font-mono tabular-nums ${
-                                    (col as any).highlight
-                                      ? val === "—" ? "text-gray-600" : "text-green-400 font-bold"
-                                      : val === "—" ? "text-gray-600" : "text-gray-200"
-                                  }`}
-                                >
-                                  {val}
-                                </span>
-                              );
-                            })}
-                          </div>
-                        );
-                      })}
-                  </div>
-                </div>
-              );
-            })}
+                              {group.cols.map((col, i) => {
+                                const val = col.fn(stats);
+                                return (
+                                  <span
+                                    key={i}
+                                    className={`text-right text-sm font-mono tabular-nums ${
+                                      (col as any).highlight
+                                        ? val === "—" || val === "" ? "text-gray-600" : "text-green-400 font-bold"
+                                        : val === "—" || val === "" ? "text-gray-600" : "text-gray-200"
+                                    }`}
+                                  >
+                                    {val === "" ? "" : val}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          );
+                        })}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
 
             <div className="bg-gray-800 rounded-lg p-4 flex justify-between items-center mt-4 sticky bottom-4 border border-gray-700">
               <div className="flex items-center gap-3">
