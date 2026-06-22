@@ -91,17 +91,17 @@ function StandingsTable({
         <table className="w-full">
           <thead>
             <tr className="bg-gray-800 text-gray-400 text-xs uppercase tracking-wider">
-              <th className="text-left px-4 py-3">Rank</th>
+              <th className="text-left px-4 py-3 w-12">Rank</th>
               <th className="text-left px-4 py-3">Team</th>
-              <th className="text-right px-3 py-3">WC</th>
-              <th className="text-right px-3 py-3">DIV</th>
-              <th className="text-right px-3 py-3">CC</th>
-              <th className="text-right px-3 py-3">SB</th>
-              <th className="text-right px-3 py-3 text-white">Total</th>
-              <th className="text-right px-3 py-3">PBL</th>
-              <th className="text-right px-3 py-3">PROJ</th>
-              <th className="text-right px-3 py-3">REM</th>
-              <th className="text-right px-4 py-3">ELIM</th>
+              <th className="text-right px-4 py-3 w-14">WC</th>
+              <th className="text-right px-4 py-3 w-14">DIV</th>
+              <th className="text-right px-4 py-3 w-14">CC</th>
+              <th className="text-right px-4 py-3 w-14">SB</th>
+              <th className="text-right px-4 py-3 w-20 text-white">Total</th>
+              <th className="text-right px-4 py-3 w-14">PBL</th>
+              <th className="text-right px-4 py-3 w-16">PROJ</th>
+              <th className="text-right px-4 py-3 w-12">REM</th>
+              <th className="text-right px-4 py-3 w-12">ELIM</th>
             </tr>
           </thead>
           <tbody>
@@ -127,7 +127,7 @@ function StandingsTable({
                     isMe ? "bg-green-950 hover:bg-green-900" : "hover:bg-gray-800"
                   }`}
                 >
-                  <td className="px-4 py-4">
+                  <td className="px-4 py-4 w-12">
                     <span className={`font-black text-lg ${
                       i === 0 ? "text-yellow-400" :
                       i === 1 ? "text-gray-300" :
@@ -147,27 +147,27 @@ function StandingsTable({
                       </div>
                     </div>
                   </td>
-                  <td className="px-3 py-4 text-right text-gray-300 text-sm">{wc != null ? wc.toFixed(1) : "—"}</td>
-                  <td className="px-3 py-4 text-right text-gray-300 text-sm">{div != null ? div.toFixed(1) : "—"}</td>
-                  <td className="px-3 py-4 text-right text-gray-300 text-sm">{cc != null ? cc.toFixed(1) : "—"}</td>
-                  <td className="px-3 py-4 text-right text-gray-300 text-sm">{sb != null ? sb.toFixed(1) : "—"}</td>
-                  <td className="px-3 py-4 text-right font-black text-green-400 text-lg">{total.toFixed(1)}</td>
-                  <td className="px-3 py-4 text-right text-sm">
+                  <td className="px-4 py-4 text-right text-gray-300 text-sm w-14">{wc != null ? wc.toFixed(1) : "—"}</td>
+                  <td className="px-4 py-4 text-right text-gray-300 text-sm w-14">{div != null ? div.toFixed(1) : "—"}</td>
+                  <td className="px-4 py-4 text-right text-gray-300 text-sm w-14">{cc != null ? cc.toFixed(1) : "—"}</td>
+                  <td className="px-4 py-4 text-right text-gray-300 text-sm w-14">{sb != null ? sb.toFixed(1) : "—"}</td>
+                  <td className="px-4 py-4 text-right font-black text-green-400 text-lg w-20">{total.toFixed(1)}</td>
+                  <td className="px-4 py-4 text-right text-sm w-14">
                     {pbl === null
                       ? <span className="text-gray-600">—</span>
                       : <span className="text-red-400">{pbl.toFixed(1)}</span>
                     }
                   </td>
-                  <td className="px-3 py-4 text-right text-sm">
+                  <td className="px-4 py-4 text-right text-sm w-16">
                     {proj != null
                       ? <span className="text-blue-400">{proj.toFixed(1)}</span>
                       : <span className="text-gray-600">—</span>
                     }
                   </td>
-                  <td className="px-3 py-4 text-right text-sm">
+                  <td className="px-4 py-4 text-right text-sm w-12">
                     <span className="text-green-400 font-bold">{rem}</span>
                   </td>
-                  <td className="px-4 py-4 text-right text-sm">
+                  <td className="px-4 py-4 text-right text-sm w-12">
                     <span className={elim > 0 ? "text-red-400" : "text-gray-600"}>{elim}</span>
                   </td>
                 </tr>
@@ -221,7 +221,6 @@ export default function StandingsPage() {
       setPicks(picksData || []);
       setScores(scoresData || []);
 
-      // Build rows for ALL members even if no standings entry yet
       const allMembers = membersData || [];
       const standingsMap: { [userId: string]: any } = {};
       (standingsData || []).forEach((s: any) => { standingsMap[s.user_id] = s; });
@@ -241,8 +240,6 @@ export default function StandingsPage() {
   const conferenceEnabled = league?.conference_enabled;
   const confAName = league?.conference_a_name || "AFC";
   const confBName = league?.conference_b_name || "NFC";
-
-  // Only show PROJ/PBL when at least one playoff week has been scored
   const anyScoresExist = scores.some(s => s.week >= 1 && s.week <= 4 && parseFloat(s.total_points) > 0);
 
   function getMemberConference(userId: string) {

@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-const LAUNCH_DATE = new Date("2027-01-05T06:00:00-05:00"); // Jan 5, 2027 6am ET
+const LAUNCH_DATE = new Date("2027-01-05T06:00:00-05:00");
 
 function PFFLLogo({ size = 80 }: { size?: number }) {
   return (
@@ -100,33 +100,36 @@ function EmailSignup() {
   if (status === "success") {
     return (
       <div className="bg-green-900 border border-green-700 rounded-xl px-6 py-4 text-center max-w-md mx-auto">
-        <p className="text-green-400 font-bold">✓ You're on the list!</p>
-        <p className="text-gray-400 text-sm mt-1">We'll email you when leagues open.</p>
+        <p className="text-green-400 font-bold text-lg">✓ You're on the list!</p>
+        <p className="text-gray-400 text-sm mt-1">We'll email you the moment leagues open on January 5.</p>
       </div>
     );
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-3 max-w-md mx-auto w-full">
-      <input
-        type="email"
-        required
-        placeholder="your@email.com"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        className="flex-1 bg-gray-800 border border-gray-700 text-white px-4 py-3 rounded-lg text-sm focus:outline-none focus:border-green-500"
-      />
-      <button
-        type="submit"
-        disabled={status === "loading"}
-        className="bg-green-600 hover:bg-green-500 disabled:bg-gray-700 text-white font-bold px-6 py-3 rounded-lg text-sm whitespace-nowrap transition-colors"
-      >
-        {status === "loading" ? "Joining..." : "Notify Me"}
-      </button>
+    <div className="flex flex-col gap-2 max-w-md mx-auto w-full">
+      <div className="flex flex-col sm:flex-row gap-3">
+        <input
+          type="email"
+          required
+          placeholder="your@email.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleSubmit(e as any)}
+          className="flex-1 bg-gray-800 border border-gray-700 text-white px-4 py-3 rounded-lg text-sm focus:outline-none focus:border-green-500"
+        />
+        <button
+          onClick={(e) => handleSubmit(e as any)}
+          disabled={status === "loading"}
+          className="bg-green-600 hover:bg-green-500 disabled:bg-gray-700 text-white font-bold px-6 py-3 rounded-lg text-sm whitespace-nowrap transition-colors"
+        >
+          {status === "loading" ? "Joining..." : "Notify Me"}
+        </button>
+      </div>
       {status === "error" && (
-        <p className="text-red-400 text-xs sm:absolute sm:mt-12">Something went wrong. Try again.</p>
+        <p className="text-red-400 text-xs text-center">Something went wrong. Try again.</p>
       )}
-    </form>
+    </div>
   );
 }
 
@@ -229,11 +232,11 @@ export default function Home() {
           <h2 className="text-3xl font-black text-center mb-16">Everything You Need</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {[
-              { icon: "🏈", title: "Live Snake Draft", desc: "Real-time draft with 90-second timer, smack talk chat, and auto-pick." },
+              { icon: "🏈", title: "Live Snake Draft", desc: "Real-time draft with 60-second timer, smack talk chat, and auto-pick." },
               { icon: "💀", title: "Elimination Mechanic", desc: "When NFL teams lose, their players stop scoring. Watch your roster shrink." },
               { icon: "🏆", title: "Best Ball Format", desc: "Your entire roster scores every week. No lineup decisions. Pure draft skill." },
               { icon: "📊", title: "Live Standings", desc: "Cumulative scores update after every playoff week automatically." },
-              { icon: "👥", title: "Private Leagues", desc: "Play with your crew. 4-14 teams. Free forever." },
+              { icon: "👥", title: "Private Leagues", desc: "Play with your crew. 6-12 teams. Free forever." },
               { icon: "⚡", title: "5-Day Window", desc: "Draft opens Jan 5. Closes before Wild Card weekend. Days of madness." },
             ].map(item => (
               <div key={item.title} className="flex gap-4">
@@ -263,7 +266,7 @@ export default function Home() {
           <PFFLLogo size={24} />
           <span>Playoff Fantasy Football</span>
         </div>
-        <p>© 2027 Playoff Fantasy. All rights reserved.</p>
+        <p>© 2026 Playoff Fantasy. All rights reserved.</p>
       </footer>
 
     </main>
