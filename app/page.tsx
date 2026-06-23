@@ -6,29 +6,17 @@ const LAUNCH_DATE = new Date("2027-01-05T06:00:00-05:00");
 
 function PFFLLogo({ size = 80 }: { size?: number }) {
   return (
-    <img
-      src="/apple-touch-icon.png"
-      alt="PFFL Logo"
-      width={size}
-      height={size}
-      style={{ borderRadius: "20%" }}
-    />
+    <img src="/apple-touch-icon.png" alt="PFFL Logo" width={size} height={size} style={{ borderRadius: "20%" }} />
   );
 }
 
 function useCountdown(target: Date) {
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
-
   useEffect(() => {
     function update() {
       const now = new Date().getTime();
       const distance = target.getTime() - now;
-
-      if (distance <= 0) {
-        setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 });
-        return;
-      }
-
+      if (distance <= 0) { setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 }); return; }
       setTimeLeft({
         days: Math.floor(distance / (1000 * 60 * 60 * 24)),
         hours: Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
@@ -36,32 +24,26 @@ function useCountdown(target: Date) {
         seconds: Math.floor((distance % (1000 * 60)) / 1000),
       });
     }
-
     update();
     const interval = setInterval(update, 1000);
     return () => clearInterval(interval);
   }, [target]);
-
   return timeLeft;
 }
 
 function CountdownTimer() {
   const { days, hours, minutes, seconds } = useCountdown(LAUNCH_DATE);
-
   const units = [
     { label: "Days", value: days },
     { label: "Hours", value: hours },
     { label: "Minutes", value: minutes },
     { label: "Seconds", value: seconds },
   ];
-
   return (
     <div className="flex gap-3 sm:gap-4 justify-center">
       {units.map(unit => (
         <div key={unit.label} className="bg-gray-800 rounded-xl px-4 py-3 sm:px-6 sm:py-4 min-w-[70px] sm:min-w-[90px] text-center border border-gray-700">
-          <p className="text-2xl sm:text-4xl font-black text-green-400 tabular-nums">
-            {unit.value.toString().padStart(2, "0")}
-          </p>
+          <p className="text-2xl sm:text-4xl font-black text-green-400 tabular-nums">{unit.value.toString().padStart(2, "0")}</p>
           <p className="text-xs text-gray-500 uppercase tracking-wider mt-1">{unit.label}</p>
         </div>
       ))}
@@ -73,28 +55,18 @@ function EmailSignup() {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSubmit() {
     if (!email.includes("@")) return;
-
     setStatus("loading");
-
     try {
       const res = await fetch("/api/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
       });
-
-      if (res.ok) {
-        setStatus("success");
-        setEmail("");
-      } else {
-        setStatus("error");
-      }
-    } catch {
-      setStatus("error");
-    }
+      if (res.ok) { setStatus("success"); setEmail(""); }
+      else setStatus("error");
+    } catch { setStatus("error"); }
   }
 
   if (status === "success") {
@@ -111,24 +83,54 @@ function EmailSignup() {
       <div className="flex flex-col sm:flex-row gap-3">
         <input
           type="email"
-          required
           placeholder="your@email.com"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSubmit(e as any)}
+          onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
           className="flex-1 bg-gray-800 border border-gray-700 text-white px-4 py-3 rounded-lg text-sm focus:outline-none focus:border-green-500"
         />
         <button
-          onClick={(e) => handleSubmit(e as any)}
+          onClick={handleSubmit}
           disabled={status === "loading"}
           className="bg-green-600 hover:bg-green-500 disabled:bg-gray-700 text-white font-bold px-6 py-3 rounded-lg text-sm whitespace-nowrap transition-colors"
         >
           {status === "loading" ? "Joining..." : "Notify Me"}
         </button>
       </div>
-      {status === "error" && (
-        <p className="text-red-400 text-xs text-center">Something went wrong. Try again.</p>
-      )}
+      {status === "error" && <p className="text-red-400 text-xs text-center">Something went wrong. Try again.</p>}
+    </div>
+  );
+}
+
+const FAQ_ITEMS = [
+  { q: "What happens if my player gets injured?", a: "Injuries count as part of the game. There are no replacements or waivers — it's draft and hold. That's the risk/reward." },
+  { q: "What if all my players are eliminated?", a: "It's brutal, but possible. Your score stops increasing but you stay in the league. The winner is whoever has the most cumulative points after the Super Bowl." },
+  { q: "What are the tiebreaker rules?", a: "Ties are broken by: (1) most active players remaining after the Super Bowl, (2) highest single-week score, (3) coin flip." },
+  { q: "Can I join multiple leagues?", a: "Yes. You can be in as many leagues as you want, with different groups of friends." },
+  { q: "Can I trade players?", a: "No. This is a best-ball format — draft once, hold your roster all the way through the Super Bowl. No trades, no waivers." },
+  { q: "Do bye-week players score points?", a: "No. Seeds 1 and 2 in each conference have a bye in Wild Card week. Their players score 0 points Week 1, but they're guaranteed to play Week 2 if their team advances." },
+  { q: "When do scores update?", a: "Scores are calculated and updated each week after all playoff games are final. You'll see standings refresh automatically." },
+  { q: "Is it free to play?", a: "The platform is completely free. Your group can set up your own buy-in, prize structure, or just play for bragging rights — that's between you and your league." },
+];
+
+function FAQSection() {
+  const [open, setOpen] = useState<number | null>(null);
+  return (
+    <div className="max-w-3xl mx-auto">
+      {FAQ_ITEMS.map((item, i) => (
+        <div key={i} className="border-b border-gray-800">
+          <button
+            onClick={() => setOpen(open === i ? null : i)}
+            className="w-full text-left px-4 py-5 flex justify-between items-center gap-4 hover:text-white transition-colors"
+          >
+            <span className="font-bold text-gray-200">{item.q}</span>
+            <span className="text-gray-500 flex-shrink-0 text-lg">{open === i ? "−" : "+"}</span>
+          </button>
+          {open === i && (
+            <p className="px-4 pb-5 text-gray-400 text-sm leading-relaxed">{item.a}</p>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
@@ -150,9 +152,9 @@ export default function Home() {
       </nav>
 
       {/* Hero */}
-      <section className="flex flex-col items-center text-center px-8 py-20 max-w-4xl mx-auto">
-        <PFFLLogo size={120} />
-        <h1 className="text-5xl sm:text-6xl font-black mt-8 mb-4 leading-tight">
+      <section className="flex flex-col items-center text-center px-8 py-16 max-w-4xl mx-auto">
+        <PFFLLogo size={100} />
+        <h1 className="text-5xl sm:text-6xl font-black mt-6 mb-4 leading-tight">
           Playoff Fantasy<br />
           <span className="text-green-400">with Elimination</span>
         </h1>
@@ -183,21 +185,44 @@ export default function Home() {
         </div>
       </section>
 
+      {/* App Preview */}
+      <section className="bg-gray-900 py-16 px-8">
+        <div className="max-w-5xl mx-auto">
+          <h2 className="text-3xl font-black text-center mb-4">Built for your playoff league</h2>
+          <p className="text-gray-400 text-center mb-10 max-w-xl mx-auto">Live draft room, real-time standings, automatic scoring. Everything your group needs to play.</p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 text-center">
+              <div className="text-4xl mb-3">🏈</div>
+              <p className="font-black text-lg mb-1">Live Draft Room</p>
+              <p className="text-gray-400 text-sm">Real-time snake draft with timer, smack talk chat, and auto-pick for offline players.</p>
+            </div>
+            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 text-center">
+              <div className="text-4xl mb-3">💀</div>
+              <p className="font-black text-lg mb-1">Elimination Mechanic</p>
+              <p className="text-gray-400 text-sm">Watch your roster shrink in real time as NFL teams get knocked out of the playoffs.</p>
+            </div>
+            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 text-center">
+              <div className="text-4xl mb-3">📊</div>
+              <p className="font-black text-lg mb-1">Auto Scoring</p>
+              <p className="text-gray-400 text-sm">Standings update automatically after every playoff week. No manual entry required.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* How it works */}
-      <section className="bg-gray-900 py-20 px-8">
+      <section className="py-20 px-8">
         <div className="max-w-5xl mx-auto">
           <h2 className="text-3xl font-black text-center mb-16">How It Works</h2>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             {[
               { step: "1", title: "Create a League", desc: "Invite 5-11 friends to your private league. Free to play." },
-              { step: "2", title: "Snake Draft", desc: "Draft NFL playoff players before Wild Card weekend. One shot." },
+              { step: "2", title: "Snake Draft", desc: "Draft NFL playoff players before Wild Card weekend. One shot to build your roster." },
               { step: "3", title: "Survive", desc: "Your entire roster scores every week. When NFL teams lose, those players go silent." },
               { step: "4", title: "Win", desc: "Highest cumulative score after the Super Bowl takes the glory." },
             ].map(item => (
               <div key={item.step} className="text-center">
-                <div className="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center text-xl font-black mx-auto mb-4">
-                  {item.step}
-                </div>
+                <div className="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center text-xl font-black mx-auto mb-4">{item.step}</div>
                 <h3 className="font-bold text-lg mb-2">{item.title}</h3>
                 <p className="text-gray-400 text-sm">{item.desc}</p>
               </div>
@@ -207,7 +232,7 @@ export default function Home() {
       </section>
 
       {/* Strategic tension */}
-      <section className="py-20 px-8">
+      <section className="bg-gray-900 py-20 px-8">
         <div className="max-w-4xl mx-auto text-center">
           <h2 className="text-3xl font-black mb-4">The Strategic Tension</h2>
           <p className="text-gray-400 mb-12">Every pick is a risk/reward decision.</p>
@@ -226,33 +251,16 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Features */}
-      <section className="bg-gray-900 py-20 px-8">
-        <div className="max-w-5xl mx-auto">
-          <h2 className="text-3xl font-black text-center mb-16">Everything You Need</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {[
-              { icon: "🏈", title: "Live Snake Draft", desc: "Real-time draft with 60-second timer, smack talk chat, and auto-pick." },
-              { icon: "💀", title: "Elimination Mechanic", desc: "When NFL teams lose, their players stop scoring. Watch your roster shrink." },
-              { icon: "🏆", title: "Best Ball Format", desc: "Your entire roster scores every week. No lineup decisions. Pure draft skill." },
-              { icon: "📊", title: "Live Standings", desc: "Cumulative scores update after every playoff week automatically." },
-              { icon: "👥", title: "Private Leagues", desc: "Play with your crew. 6-12 teams. Free forever." },
-              { icon: "⚡", title: "5-Day Window", desc: "Draft opens Jan 5. Closes before Wild Card weekend. Days of madness." },
-            ].map(item => (
-              <div key={item.title} className="flex gap-4">
-                <div className="text-3xl">{item.icon}</div>
-                <div>
-                  <h3 className="font-bold mb-1">{item.title}</h3>
-                  <p className="text-gray-400 text-sm">{item.desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
+      {/* FAQ */}
+      <section className="py-20 px-8">
+        <div className="max-w-3xl mx-auto">
+          <h2 className="text-3xl font-black text-center mb-12">Frequently Asked Questions</h2>
+          <FAQSection />
         </div>
       </section>
 
       {/* CTA */}
-      <section className="py-20 px-8 text-center">
+      <section className="bg-gray-900 py-20 px-8 text-center">
         <h2 className="text-4xl font-black mb-4">Ready to Play?</h2>
         <p className="text-gray-400 mb-8">Free to play. No credit card. Just bring your friends.</p>
         <Link href="/signup" className="bg-green-600 hover:bg-green-500 text-white font-black text-xl px-12 py-5 rounded-xl inline-block">

@@ -38,6 +38,25 @@ function Avatar({ member, size = "md" }: { member: any; size?: "sm" | "md" | "lg
   );
 }
 
+function Tooltip({ text }: { text: string }) {
+  const [show, setShow] = useState(false);
+  return (
+    <span className="relative inline-block ml-1">
+      <button
+        onMouseEnter={() => setShow(true)}
+        onMouseLeave={() => setShow(false)}
+        onTouchStart={() => setShow(v => !v)}
+        className="text-gray-600 hover:text-gray-400 text-xs leading-none"
+      >ⓘ</button>
+      {show && (
+        <span className="absolute z-50 bottom-full right-0 mb-1 w-48 bg-gray-700 text-white text-xs rounded-lg px-3 py-2 shadow-xl">
+          {text}
+        </span>
+      )}
+    </span>
+  );
+}
+
 function StandingsTable({
   rows, user, members, scores, picks, players, leagueId, router, anyScoresExist,
 }: {
@@ -87,21 +106,34 @@ function StandingsTable({
 
   return (
     <div className="bg-gray-900 rounded-xl overflow-hidden border border-gray-800">
+      {!anyScoresExist && (
+        <div className="px-4 py-3 bg-gray-800 border-b border-gray-700 text-center">
+          <p className="text-gray-400 text-xs">Scores update after each playoff week. Check back after Wild Card weekend (Jan 11).</p>
+        </div>
+      )}
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
             <tr className="bg-gray-800 text-gray-400 text-xs uppercase tracking-wider">
-              <th className="text-left px-4 py-3 w-12">Rank</th>
-              <th className="text-left px-4 py-3">Team</th>
+              <th className="text-left px-4 py-3 sticky left-0 bg-gray-800 z-10 w-12">Rank</th>
+              <th className="text-left px-4 py-3 sticky left-12 bg-gray-800 z-10 min-w-[140px]">Team</th>
               <th className="text-right px-4 py-3 w-14">WC</th>
               <th className="text-right px-4 py-3 w-14">DIV</th>
               <th className="text-right px-4 py-3 w-14">CC</th>
               <th className="text-right px-4 py-3 w-14">SB</th>
               <th className="text-right px-4 py-3 w-20 text-white">Total</th>
-              <th className="text-right px-4 py-3 w-14">PBL</th>
-              <th className="text-right px-4 py-3 w-16">PROJ</th>
-              <th className="text-right px-4 py-3 w-12">REM</th>
-              <th className="text-right px-4 py-3 w-12">ELIM</th>
+              <th className="text-right px-4 py-3 w-16">
+                PBL<Tooltip text="Points Behind Leader. How far behind 1st place you are." />
+              </th>
+              <th className="text-right px-4 py-3 w-16">
+                PROJ<Tooltip text="Projected final score based on your average points per week so far." />
+              </th>
+              <th className="text-right px-4 py-3 w-12">
+                REM<Tooltip text="Players remaining — how many of your drafted players are still active." />
+              </th>
+              <th className="text-right px-4 py-3 w-12">
+                ELIM<Tooltip text="Players eliminated — how many of your players' teams have been knocked out." />
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -127,7 +159,7 @@ function StandingsTable({
                     isMe ? "bg-green-950 hover:bg-green-900" : "hover:bg-gray-800"
                   }`}
                 >
-                  <td className="px-4 py-4 w-12">
+                  <td className={`px-4 py-4 w-12 sticky left-0 z-10 ${isMe ? "bg-green-950" : "bg-gray-900"}`}>
                     <span className={`font-black text-lg ${
                       i === 0 ? "text-yellow-400" :
                       i === 1 ? "text-gray-300" :
@@ -136,7 +168,7 @@ function StandingsTable({
                       {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i + 1}`}
                     </span>
                   </td>
-                  <td className="px-4 py-4">
+                  <td className={`px-4 py-4 sticky left-12 z-10 min-w-[140px] ${isMe ? "bg-green-950" : "bg-gray-900"}`}>
                     <div className="flex items-center gap-2">
                       {member && <Avatar member={member} size="sm" />}
                       <div>
@@ -151,8 +183,12 @@ function StandingsTable({
                   <td className="px-4 py-4 text-right text-gray-300 text-sm w-14">{div != null ? div.toFixed(1) : "—"}</td>
                   <td className="px-4 py-4 text-right text-gray-300 text-sm w-14">{cc != null ? cc.toFixed(1) : "—"}</td>
                   <td className="px-4 py-4 text-right text-gray-300 text-sm w-14">{sb != null ? sb.toFixed(1) : "—"}</td>
-                  <td className="px-4 py-4 text-right font-black text-green-400 text-lg w-20">{total.toFixed(1)}</td>
-                  <td className="px-4 py-4 text-right text-sm w-14">
+                  <td className="px-4 py-4 text-right w-20">
+                    <span className={`font-black text-lg ${anyTeamHasScore && total > 0 ? "text-green-400" : "text-gray-500"}`}>
+                      {total.toFixed(1)}
+                    </span>
+                  </td>
+                  <td className="px-4 py-4 text-right text-sm w-16">
                     {pbl === null
                       ? <span className="text-gray-600">—</span>
                       : <span className="text-red-400">{pbl.toFixed(1)}</span>
@@ -254,6 +290,9 @@ export default function StandingsPage() {
     </main>
   );
 
+  const myRow = standings.find(s => s.user_id === user?.id);
+  const myRank = myRow ? standings.indexOf(myRow) + 1 : null;
+
   const confAStandings = standings.filter(s => getMemberConference(s.user_id) === "A");
   const confBStandings = standings.filter(s => getMemberConference(s.user_id) === "B");
   const unassigned = standings.filter(s => !getMemberConference(s.user_id));
@@ -269,8 +308,13 @@ export default function StandingsPage() {
 
       <div className="max-w-5xl mx-auto px-4 py-8">
         <h1 className="text-2xl font-black mb-1">{league?.name}</h1>
-        <p className="text-gray-400 text-sm mb-2">Standings · Updates after each playoff week</p>
-        <p className="text-gray-600 text-xs mb-8">Click any team to view their roster →</p>
+        <p className="text-gray-400 text-sm mb-1">Standings · Updates after each playoff week</p>
+        {myRank && (
+          <p className="text-green-400 text-sm font-bold mb-2">
+            You are currently in {myRank === 1 ? "1st" : myRank === 2 ? "2nd" : myRank === 3 ? "3rd" : `${myRank}th`} place
+          </p>
+        )}
+        <p className="text-gray-600 text-xs mb-8">Tap any team to view their roster →</p>
 
         {conferenceEnabled ? (
           <div className="flex flex-col gap-10">
