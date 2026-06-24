@@ -103,14 +103,38 @@ function EmailSignup() {
 }
 
 const FAQ_ITEMS = [
-  { q: "What happens if my player gets injured?", a: "Injuries count as part of the game. There are no replacements or waivers — it's draft and hold. That's the risk/reward." },
-  { q: "What if all my players are eliminated?", a: "It's brutal, but possible. Your score stops increasing but you stay in the league. The winner is whoever has the most cumulative points after the Super Bowl." },
-  { q: "What are the tiebreaker rules?", a: "Ties are broken by: (1) most active players remaining after the Super Bowl, (2) highest single-week score, (3) coin flip." },
-  { q: "Can I join multiple leagues?", a: "Yes. You can be in as many leagues as you want, with different groups of friends." },
-  { q: "Can I trade players?", a: "No. This is a best-ball format — draft once, hold your roster all the way through the Super Bowl. No trades, no waivers." },
-  { q: "Do bye-week players score points?", a: "No. Seeds 1 and 2 in each conference have a bye in Wild Card week. Their players score 0 points Week 1, but they're guaranteed to play Week 2 if their team advances." },
-  { q: "When do scores update?", a: "Scores are calculated and updated each week after all playoff games are final. You'll see standings refresh automatically." },
-  { q: "Is it free to play?", a: "The platform is completely free. Your group can set up your own buy-in, prize structure, or just play for bragging rights — that's between you and your league." },
+  {
+    q: "What happens if my player gets injured?",
+    a: "Injuries count as part of the game. There are no replacements or waivers — it's draft and hold. That's the risk/reward."
+  },
+  {
+    q: "What if all my players are eliminated?",
+    a: "It's brutal, but possible. Your score stops increasing but you stay in the league. The winner is whoever has the most cumulative points after the Super Bowl."
+  },
+  {
+    q: "What are the tiebreaker rules?",
+    a: "Ties are broken by: (1) most active players remaining after the Super Bowl, (2) highest single-week score, (3) coin flip."
+  },
+  {
+    q: "Can I join multiple leagues?",
+    a: "Yes. You can be in as many leagues as you want, with different groups of friends."
+  },
+  {
+    q: "Can I trade players?",
+    a: "No. This is a best-ball format — draft once, hold your roster all the way through the Super Bowl. No trades, no waivers."
+  },
+  {
+    q: "Do bye-week players score points?",
+    a: "Only the #1 seed in each conference has a bye in Wild Card week. Their players score 0 points Week 1, but they're guaranteed to play Week 2 if their team advances."
+  },
+  {
+    q: "When do scores update?",
+    a: "Scores are calculated and updated each week after all playoff games are final. You'll see standings refresh automatically."
+  },
+  {
+    q: "Is it free to play?",
+    a: "The platform is completely free. Your group can set up your own buy-in, prize structure, or just play for bragging rights — that's between you and your league."
+  },
 ];
 
 function FAQSection() {
