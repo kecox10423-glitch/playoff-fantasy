@@ -38,6 +38,20 @@ function Avatar({ member, size = "md" }: { member: any; size?: "sm" | "md" | "lg
   );
 }
 
+function RankBadge({ rank }: { rank: number }) {
+  const styles: { [k: number]: string } = {
+    1: "bg-yellow-500/20 text-yellow-300 ring-1 ring-yellow-500/50 shadow-sm shadow-yellow-900/30",
+    2: "bg-gray-400/15 text-gray-300 ring-1 ring-gray-400/30",
+    3: "bg-orange-600/20 text-orange-400 ring-1 ring-orange-500/30",
+  };
+  const style = styles[rank] ?? "bg-gray-800 text-gray-500 ring-1 ring-gray-700";
+  return (
+    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 ${style}`}>
+      {rank}
+    </div>
+  );
+}
+
 function Tooltip({ text }: { text: string }) {
   const [show, setShow] = useState(false);
   return (
@@ -49,7 +63,7 @@ function Tooltip({ text }: { text: string }) {
         className="text-gray-600 hover:text-gray-400 text-xs leading-none"
       >ⓘ</button>
       {show && (
-        <span className="absolute z-50 bottom-full right-0 mb-1 w-48 bg-gray-700 text-white text-xs rounded-lg px-3 py-2 shadow-xl">
+        <span className="absolute z-50 bottom-full right-0 mb-1 w-48 bg-gray-700 text-white text-xs rounded-lg px-3 py-2 shadow-xl border border-gray-600">
           {text}
         </span>
       )}
@@ -99,29 +113,29 @@ function StandingsTable({
   const anyTeamHasScore = anyScoresExist && leaderTotal > 0;
 
   if (rows.length === 0) return (
-    <div className="bg-gray-900 rounded-xl p-8 text-center border border-gray-800">
+    <div className="bg-gray-900 rounded-2xl p-8 text-center border border-gray-700">
       <p className="text-gray-500 text-sm">No teams yet.</p>
     </div>
   );
 
   return (
-    <div className="bg-gray-900 rounded-xl overflow-hidden border border-gray-800">
+    <div className="bg-gray-900 rounded-2xl overflow-hidden border border-gray-700 shadow-xl">
       {!anyScoresExist && (
-        <div className="px-4 py-3 bg-gray-800 border-b border-gray-700 text-center">
+        <div className="px-4 py-3 bg-gray-800/60 border-b border-gray-700 text-center">
           <p className="text-gray-400 text-xs">Scores update after each playoff week. Check back after Wild Card weekend (Jan 11).</p>
         </div>
       )}
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
-            <tr className="bg-gray-800 text-gray-400 text-xs uppercase tracking-wider">
-              <th className="text-left px-4 py-3 sticky left-0 bg-gray-800 z-10 w-12">Rank</th>
-              <th className="text-left px-4 py-3 sticky left-12 bg-gray-800 z-10 min-w-[140px]">Team</th>
+            <tr className="bg-gray-800/80 text-gray-400 text-xs uppercase tracking-widest">
+              <th className="text-left px-4 py-3 sticky left-0 bg-gray-800 z-10 w-14">Rank</th>
+              <th className="text-left px-4 py-3 sticky left-14 bg-gray-800 z-10 min-w-[150px]">Team</th>
               <th className="text-right px-4 py-3 w-14">WC</th>
               <th className="text-right px-4 py-3 w-14">DIV</th>
               <th className="text-right px-4 py-3 w-14">CC</th>
               <th className="text-right px-4 py-3 w-14">SB</th>
-              <th className="text-right px-4 py-3 w-20 text-white">Total</th>
+              <th className="text-right px-4 py-3 w-20 text-white font-black">Total</th>
               <th className="text-right px-4 py-3 w-16">
                 PBL<Tooltip text="Points Behind Leader. How far behind 1st place you are." />
               </th>
@@ -155,55 +169,49 @@ function StandingsTable({
                 <tr
                   key={row.user_id}
                   onClick={() => router.push(`/roster/${leagueId}?team=${row.user_id}`)}
-                  className={`border-t border-gray-800 cursor-pointer transition-colors ${
-                    isMe ? "bg-green-950 hover:bg-green-900" : "hover:bg-gray-800"
+                  className={`border-t border-gray-800 cursor-pointer transition-all duration-150 ${
+                    isMe ? "bg-green-950/60 hover:bg-green-900/40" : "hover:bg-gray-800/60"
                   }`}
                 >
-                  <td className={`px-4 py-4 w-12 sticky left-0 z-10 ${isMe ? "bg-green-950" : "bg-gray-900"}`}>
-                    <span className={`font-black text-lg ${
-                      i === 0 ? "text-yellow-400" :
-                      i === 1 ? "text-gray-300" :
-                      i === 2 ? "text-orange-400" : "text-gray-600"
-                    }`}>
-                      {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i + 1}`}
-                    </span>
+                  <td className={`px-4 py-4 w-14 sticky left-0 z-10 ${isMe ? "bg-green-950/80" : "bg-gray-900"}`}>
+                    <RankBadge rank={i + 1} />
                   </td>
-                  <td className={`px-4 py-4 sticky left-12 z-10 min-w-[140px] ${isMe ? "bg-green-950" : "bg-gray-900"}`}>
+                  <td className={`px-4 py-4 sticky left-14 z-10 min-w-[150px] ${isMe ? "bg-green-950/80" : "bg-gray-900"}`}>
                     <div className="flex items-center gap-2">
                       {member && <Avatar member={member} size="sm" />}
                       <div>
-                        <span className={`font-bold ${isMe ? "text-green-400" : "text-white"}`}>
+                        <span className={`font-bold tracking-tight ${isMe ? "text-green-400" : "text-white"}`}>
                           {member?.team_name || "Unknown"}
                         </span>
                         {isMe && <span className="text-xs text-gray-500 ml-1">(You)</span>}
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-4 text-right text-gray-300 text-sm w-14">{wc != null ? wc.toFixed(1) : "—"}</td>
-                  <td className="px-4 py-4 text-right text-gray-300 text-sm w-14">{div != null ? div.toFixed(1) : "—"}</td>
-                  <td className="px-4 py-4 text-right text-gray-300 text-sm w-14">{cc != null ? cc.toFixed(1) : "—"}</td>
-                  <td className="px-4 py-4 text-right text-gray-300 text-sm w-14">{sb != null ? sb.toFixed(1) : "—"}</td>
-                  <td className="px-4 py-4 text-right w-20">
-                    <span className={`font-black text-lg ${anyTeamHasScore && total > 0 ? "text-green-400" : "text-gray-500"}`}>
+                  <td className="px-4 py-4 text-right text-gray-300 text-sm w-14 tabular-nums">{wc != null ? wc.toFixed(1) : "—"}</td>
+                  <td className="px-4 py-4 text-right text-gray-300 text-sm w-14 tabular-nums">{div != null ? div.toFixed(1) : "—"}</td>
+                  <td className="px-4 py-4 text-right text-gray-300 text-sm w-14 tabular-nums">{cc != null ? cc.toFixed(1) : "—"}</td>
+                  <td className="px-4 py-4 text-right text-gray-300 text-sm w-14 tabular-nums">{sb != null ? sb.toFixed(1) : "—"}</td>
+                  <td className="px-4 py-4 text-right w-20 tabular-nums">
+                    <span className={`font-black text-xl tracking-tight ${anyTeamHasScore && total > 0 ? "text-green-400" : "text-gray-500"}`}>
                       {total.toFixed(1)}
                     </span>
                   </td>
-                  <td className="px-4 py-4 text-right text-sm w-16">
+                  <td className="px-4 py-4 text-right text-sm w-16 tabular-nums">
                     {pbl === null
                       ? <span className="text-gray-600">—</span>
                       : <span className="text-red-400">{pbl.toFixed(1)}</span>
                     }
                   </td>
-                  <td className="px-4 py-4 text-right text-sm w-16">
+                  <td className="px-4 py-4 text-right text-sm w-16 tabular-nums">
                     {proj != null
                       ? <span className="text-blue-400">{proj.toFixed(1)}</span>
                       : <span className="text-gray-600">—</span>
                     }
                   </td>
-                  <td className="px-4 py-4 text-right text-sm w-12">
+                  <td className="px-4 py-4 text-right text-sm w-12 tabular-nums">
                     <span className="text-green-400 font-bold">{rem}</span>
                   </td>
-                  <td className="px-4 py-4 text-right text-sm w-12">
+                  <td className="px-4 py-4 text-right text-sm w-12 tabular-nums">
                     <span className={elim > 0 ? "text-red-400" : "text-gray-600"}>{elim}</span>
                   </td>
                 </tr>
@@ -286,12 +294,13 @@ export default function StandingsPage() {
 
   if (loading) return (
     <main className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
-      <p>Loading...</p>
+      <p className="text-gray-400">Loading...</p>
     </main>
   );
 
   const myRow = standings.find(s => s.user_id === user?.id);
   const myRank = myRow ? standings.indexOf(myRow) + 1 : null;
+  const ordinal = (n: number) => n === 1 ? "1st" : n === 2 ? "2nd" : n === 3 ? "3rd" : `${n}th`;
 
   const confAStandings = standings.filter(s => getMemberConference(s.user_id) === "A");
   const confBStandings = standings.filter(s => getMemberConference(s.user_id) === "B");
@@ -299,20 +308,16 @@ export default function StandingsPage() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-      <Nav
-        leagueId={leagueId}
-        leagueName={league?.name}
-        isCommissioner={isCommissioner}
-        activePage="standings"
-      />
+      <Nav leagueId={leagueId} leagueName={league?.name} isCommissioner={isCommissioner} activePage="standings" />
 
       <div className="max-w-5xl mx-auto px-4 py-8">
-        <h1 className="text-2xl font-black mb-1">{league?.name}</h1>
-        <p className="text-gray-400 text-sm mb-1">Standings · Updates after each playoff week</p>
+        <h1 className="text-3xl font-black mb-1 tracking-tight">{league?.name}</h1>
+        <p className="text-gray-400 text-sm mb-2">Standings · Updates after each playoff week</p>
         {myRank && (
-          <p className="text-green-400 text-sm font-bold mb-2">
-            You are currently in {myRank === 1 ? "1st" : myRank === 2 ? "2nd" : myRank === 3 ? "3rd" : `${myRank}th`} place
-          </p>
+          <div className="inline-flex items-center gap-2 bg-green-950/60 border border-green-800/50 rounded-full px-4 py-1.5 mb-4">
+            <RankBadge rank={myRank} />
+            <p className="text-green-400 text-sm font-bold">You are in {ordinal(myRank)} place</p>
+          </div>
         )}
         <p className="text-gray-600 text-xs mb-8">Tap any team to view their roster →</p>
 
@@ -320,15 +325,15 @@ export default function StandingsPage() {
           <div className="flex flex-col gap-10">
             <div>
               <div className="flex items-center gap-3 mb-4">
-                <h2 className="text-xl font-black">{confAName}</h2>
-                <span className="text-xs bg-blue-900 text-blue-300 px-2 py-1 rounded-full font-bold">Conference</span>
+                <h2 className="text-xl font-black tracking-tight">{confAName}</h2>
+                <span className="text-xs bg-blue-900/60 text-blue-300 px-2.5 py-1 rounded-full font-bold ring-1 ring-blue-700/40">Conference</span>
               </div>
               <StandingsTable rows={confAStandings} {...tableProps} />
             </div>
             <div>
               <div className="flex items-center gap-3 mb-4">
-                <h2 className="text-xl font-black">{confBName}</h2>
-                <span className="text-xs bg-purple-900 text-purple-300 px-2 py-1 rounded-full font-bold">Conference</span>
+                <h2 className="text-xl font-black tracking-tight">{confBName}</h2>
+                <span className="text-xs bg-purple-900/60 text-purple-300 px-2.5 py-1 rounded-full font-bold ring-1 ring-purple-700/40">Conference</span>
               </div>
               <StandingsTable rows={confBStandings} {...tableProps} />
             </div>
@@ -340,8 +345,8 @@ export default function StandingsPage() {
             )}
             <div>
               <div className="flex items-center gap-3 mb-4">
-                <h2 className="text-xl font-black">Overall</h2>
-                <span className="text-xs bg-green-900 text-green-400 px-2 py-1 rounded-full font-bold">All Teams</span>
+                <h2 className="text-xl font-black tracking-tight">Overall</h2>
+                <span className="text-xs bg-green-900/60 text-green-400 px-2.5 py-1 rounded-full font-bold ring-1 ring-green-700/40">All Teams</span>
               </div>
               <StandingsTable rows={standings} {...tableProps} />
             </div>
