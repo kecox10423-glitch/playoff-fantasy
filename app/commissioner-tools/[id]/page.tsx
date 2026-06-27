@@ -9,8 +9,6 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-// Supabase returns timestamps without a timezone indicator (e.g. "2027-01-09 02:30:00"),
-// which JS interprets as LOCAL time instead of UTC. This forces correct UTC parsing.
 function parseUTCTimestamp(raw: string): Date {
   if (raw.endsWith("Z") || raw.includes("+")) return new Date(raw);
   return new Date(raw.replace(" ", "T") + "Z");
@@ -32,6 +30,9 @@ export default function CommissionerToolsPage() {
   const [draftAmPm, setDraftAmPm] = useState("PM");
   const [savingDraftTime, setSavingDraftTime] = useState(false);
   const [draftTimeSaved, setDraftTimeSaved] = useState(false);
+  const [randomizingOrder, setRandomizingOrder] = useState(false);
+  const [orderRandomized, setOrderRandomized] = useState(false);
+  const [draftOrder, setDraftOrder] = useState<any[]>([]);
   const router = useRouter();
   const params = useParams();
   const leagueId = params.id as string;
@@ -46,10 +47,11 @@ export default function CommissionerToolsPage() {
         .from("leagues").select("*").eq("id", leagueId).single();
 
       const { data: membersData } = await supabase
-        .from("league_members").select("*").eq("league_id", leagueId);
+        .from("league_members").select("*").eq("league_id", leagueId).order("draft_position");
 
       setLeague(leagueData);
       setMembers(membersData || []);
+      setDraftOrder(membersData || []);
 
       if (leagueData?.draft_time) {
         const d = parseUTCTimestamp(leagueData.draft_time);
@@ -88,6 +90,32 @@ export default function CommissionerToolsPage() {
     navigator.clipboard.writeText(inviteLink);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  }
+
+  async function handleRandomizeDraftOrder() {
+    setRandomizingOrder(true);
+    try {
+      const res = await fetch("/api/randomize-draft-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leagueId }),
+      });
+      if (res.ok) {
+        // Reload members with new order
+        const { data: updatedMembers } = await supabase
+          .from("league_members")
+          .select("*")
+          .eq("league_id", leagueId)
+          .order("draft_position");
+        setDraftOrder(updatedMembers || []);
+        setMembers(updatedMembers || []);
+        setOrderRandomized(true);
+        setTimeout(() => setOrderRandomized(false), 4000);
+      }
+    } catch (e) {
+      console.error("Randomize failed:", e);
+    }
+    setRandomizingOrder(false);
   }
 
   async function randomlyAssignConferences() {
@@ -174,16 +202,11 @@ export default function CommissionerToolsPage() {
     if (!league.draft_time) return;
     const draftDateObj = parseUTCTimestamp(league.draft_time);
     const formatted = draftDateObj.toLocaleString([], {
-      weekday: "long",
-      month: "long",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
+      weekday: "long", month: "long", day: "numeric",
+      hour: "numeric", minute: "2-digit",
     });
-
     const subject = `Draft Reminder: ${league.name}`;
     const message = `Hey team!\n\nJust a reminder that our draft is scheduled for:\n\n${formatted} (your local time)\n\nMake sure you're ready to go — head to the draft room a few minutes early to check in. See you there!\n\n— ${league.name}`;
-
     const queryParams = new URLSearchParams({ subject, message });
     router.push(`/league-email/${leagueId}?${queryParams.toString()}`);
   }
@@ -218,18 +241,10 @@ export default function CommissionerToolsPage() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-      <Nav
-        leagueId={leagueId}
-        leagueName={league.name}
-        isCommissioner={isCommissioner}
-        activePage="settings"
-      />
+      <Nav leagueId={leagueId} leagueName={league.name} isCommissioner={isCommissioner} activePage="settings" />
 
       <div className="max-w-2xl mx-auto px-4 py-8">
-        <button
-          onClick={() => router.push(`/league/${leagueId}`)}
-          className="text-gray-400 hover:text-white text-sm block mb-4"
-        >
+        <button onClick={() => router.push(`/league/${leagueId}`)} className="text-gray-400 hover:text-white text-sm block mb-4">
           ← Back to League
         </button>
 
@@ -237,20 +252,14 @@ export default function CommissionerToolsPage() {
         <p className="text-gray-400 text-sm mb-8">{league.name}</p>
 
         {/* Invite */}
-        <div className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800">
+        <div className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-700">
           <p className="font-bold text-white mb-3">Invite Link</p>
           <div className="flex gap-2">
-            <input
-              readOnly
-              value={inviteLink}
+            <input readOnly value={inviteLink}
               className="flex-1 bg-gray-800 text-white p-2.5 rounded-lg text-sm border border-gray-700 focus:outline-none min-w-0"
             />
-            <button
-              onClick={copyInvite}
-              className={`font-bold py-2.5 px-5 rounded-lg text-sm transition-colors flex-shrink-0 ${
-                copied ? "bg-blue-600 text-white" : "bg-green-600 hover:bg-green-500 text-white"
-              }`}
-            >
+            <button onClick={copyInvite}
+              className={`font-bold py-2.5 px-5 rounded-lg text-sm transition-colors flex-shrink-0 ${copied ? "bg-blue-600 text-white" : "bg-gradient-to-b from-green-500 to-green-700 text-white shadow-md shadow-green-900/40"}`}>
               {copied ? "✓ Copied!" : "Copy"}
             </button>
           </div>
@@ -259,8 +268,42 @@ export default function CommissionerToolsPage() {
           </p>
         </div>
 
+        {/* Draft Order */}
+        <div className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-700">
+          <p className="font-bold text-white mb-1">Draft Order</p>
+          <p className="text-gray-400 text-xs mb-4">
+            Randomize the draft order. Share this with your league so they can strategize before the draft starts.
+          </p>
+
+          <div className="flex flex-col gap-2 mb-4">
+            {draftOrder.map((member, i) => (
+              <div key={member.id} className="flex items-center gap-3 bg-gray-800 rounded-lg px-4 py-2.5">
+                <span className="text-xs font-black text-gray-500 w-5 text-center">{i + 1}</span>
+                <span className="text-sm font-bold text-white">{member.team_name}</span>
+              </div>
+            ))}
+          </div>
+
+          <button
+            onClick={handleRandomizeDraftOrder}
+            disabled={randomizingOrder || league.draft_status === "IN_PROGRESS" || league.draft_status === "COMPLETED"}
+            className={`w-full font-bold py-2.5 rounded-lg text-sm transition-all ${
+              orderRandomized
+                ? "bg-blue-600 text-white"
+                : league.draft_status === "IN_PROGRESS" || league.draft_status === "COMPLETED"
+                ? "bg-gray-700 text-gray-500 cursor-not-allowed"
+                : "bg-gradient-to-b from-green-500 to-green-700 text-white shadow-md shadow-green-900/40 hover:-translate-y-0.5 hover:shadow-green-900/60"
+            }`}
+          >
+            {randomizingOrder ? "Randomizing..." : orderRandomized ? "✓ Order Randomized!" : league.draft_status === "COMPLETED" ? "Draft Complete" : "🎲 Randomize Draft Order"}
+          </button>
+          {(league.draft_status === "IN_PROGRESS" || league.draft_status === "COMPLETED") && (
+            <p className="text-gray-600 text-xs mt-2 text-center">Cannot randomize after draft has started.</p>
+          )}
+        </div>
+
         {/* Schedule Draft */}
-        <div className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800">
+        <div className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-700">
           <p className="font-bold text-white mb-1">Schedule Draft</p>
           <p className="text-gray-400 text-xs mb-4">
             Set a date and time for your draft. Everyone sees this in their own local time, and a countdown will show in the draft room.
@@ -276,37 +319,25 @@ export default function CommissionerToolsPage() {
           )}
 
           <div className="flex flex-col sm:flex-row gap-2 mb-4">
-            <input
-              type="date"
-              value={draftDate}
-              onChange={(e) => setDraftDate(e.target.value)}
+            <input type="date" value={draftDate} onChange={(e) => setDraftDate(e.target.value)}
               className="flex-1 bg-gray-800 text-white p-2.5 rounded-lg text-sm border border-gray-700 focus:outline-none focus:border-green-500 min-w-0"
             />
             <div className="flex gap-2">
-              <select
-                value={draftHour}
-                onChange={(e) => setDraftHour(e.target.value)}
-                className="bg-gray-800 text-white p-2.5 rounded-lg text-sm border border-gray-700 focus:outline-none focus:border-green-500"
-              >
+              <select value={draftHour} onChange={(e) => setDraftHour(e.target.value)}
+                className="bg-gray-800 text-white p-2.5 rounded-lg text-sm border border-gray-700 focus:outline-none focus:border-green-500">
                 {Array.from({ length: 12 }, (_, i) => i + 1).map(h => (
                   <option key={h} value={h}>{h}</option>
                 ))}
               </select>
-              <select
-                value={draftMinute}
-                onChange={(e) => setDraftMinute(e.target.value)}
-                className="bg-gray-800 text-white p-2.5 rounded-lg text-sm border border-gray-700 focus:outline-none focus:border-green-500"
-              >
+              <select value={draftMinute} onChange={(e) => setDraftMinute(e.target.value)}
+                className="bg-gray-800 text-white p-2.5 rounded-lg text-sm border border-gray-700 focus:outline-none focus:border-green-500">
                 <option value="00">:00</option>
                 <option value="15">:15</option>
                 <option value="30">:30</option>
                 <option value="45">:45</option>
               </select>
-              <select
-                value={draftAmPm}
-                onChange={(e) => setDraftAmPm(e.target.value)}
-                className="bg-gray-800 text-white p-2.5 rounded-lg text-sm border border-gray-700 focus:outline-none focus:border-green-500"
-              >
+              <select value={draftAmPm} onChange={(e) => setDraftAmPm(e.target.value)}
+                className="bg-gray-800 text-white p-2.5 rounded-lg text-sm border border-gray-700 focus:outline-none focus:border-green-500">
                 <option value="AM">AM</option>
                 <option value="PM">PM</option>
               </select>
@@ -314,33 +345,23 @@ export default function CommissionerToolsPage() {
           </div>
 
           <div className="flex gap-2">
-            <button
-              onClick={saveDraftTime}
-              disabled={savingDraftTime || !draftDate}
+            <button onClick={saveDraftTime} disabled={savingDraftTime || !draftDate}
               className={`flex-1 font-bold py-2.5 rounded-lg text-sm transition-colors ${
-                draftTimeSaved
-                  ? "bg-blue-600 text-white"
-                  : "bg-green-600 hover:bg-green-500 disabled:bg-gray-700 text-white"
-              }`}
-            >
+                draftTimeSaved ? "bg-blue-600 text-white" : "bg-gradient-to-b from-green-500 to-green-700 disabled:bg-gray-700 disabled:from-gray-700 disabled:to-gray-700 text-white shadow-md shadow-green-900/40"
+              }`}>
               {savingDraftTime ? "Saving..." : draftTimeSaved ? "✓ Saved!" : "Save Draft Time"}
             </button>
             {currentDraftTime && (
-              <button
-                onClick={clearDraftTime}
-                disabled={savingDraftTime}
-                className="bg-red-900 hover:bg-red-800 text-red-300 font-bold py-2.5 px-4 rounded-lg text-sm"
-              >
+              <button onClick={clearDraftTime} disabled={savingDraftTime}
+                className="bg-red-900 hover:bg-red-800 text-red-300 font-bold py-2.5 px-4 rounded-lg text-sm">
                 Clear
               </button>
             )}
           </div>
 
           {currentDraftTime && (
-            <button
-              onClick={sendDraftReminder}
-              className="w-full mt-3 bg-gray-800 hover:bg-gray-700 text-white font-bold py-2.5 rounded-lg text-sm transition-colors"
-            >
+            <button onClick={sendDraftReminder}
+              className="w-full mt-3 bg-gray-800 hover:bg-gray-700 text-white font-bold py-2.5 rounded-lg text-sm transition-colors">
               ✉ Send Draft Reminder Email
             </button>
           )}
@@ -348,17 +369,14 @@ export default function CommissionerToolsPage() {
 
         {/* Conference Assignment */}
         {conferenceEnabled && (
-          <div className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-800">
+          <div className="bg-gray-900 rounded-xl p-6 mb-6 border border-gray-700">
             <p className="font-bold text-white mb-1">Conference Assignment</p>
             <p className="text-gray-400 text-xs mb-4">
               Randomly assign teams to {confAName} and {confBName}, or set manually.
             </p>
 
-            <button
-              onClick={randomlyAssignConferences}
-              disabled={assigningConferences}
-              className="bg-green-600 hover:bg-green-500 disabled:bg-gray-700 text-white font-bold py-2 px-5 rounded-lg text-sm mb-4 transition-colors"
-            >
+            <button onClick={randomlyAssignConferences} disabled={assigningConferences}
+              className="bg-gradient-to-b from-green-500 to-green-700 text-white font-bold py-2 px-5 rounded-lg text-sm mb-4 shadow-md shadow-green-900/40 transition-all">
               {assigningConferences ? "Assigning..." : "🎲 Randomly Assign Conferences"}
             </button>
 
@@ -369,12 +387,8 @@ export default function CommissionerToolsPage() {
                   <span className="text-sm text-gray-300">{member.team_name}</span>
                   <select
                     value={manualConferences[member.user_id] || ""}
-                    onChange={(e) => setManualConferences(prev => ({
-                      ...prev,
-                      [member.user_id]: e.target.value
-                    }))}
-                    className="bg-gray-700 text-white text-sm px-3 py-1.5 rounded-lg border border-gray-600 focus:outline-none focus:border-green-500"
-                  >
+                    onChange={(e) => setManualConferences(prev => ({ ...prev, [member.user_id]: e.target.value }))}
+                    className="bg-gray-700 text-white text-sm px-3 py-1.5 rounded-lg border border-gray-600 focus:outline-none focus:border-green-500">
                     <option value="">Unassigned</option>
                     <option value="A">{confAName}</option>
                     <option value="B">{confBName}</option>
@@ -383,26 +397,19 @@ export default function CommissionerToolsPage() {
               ))}
             </div>
 
-            <button
-              onClick={saveManualConferences}
-              disabled={savingConferences}
+            <button onClick={saveManualConferences} disabled={savingConferences}
               className={`mt-4 w-full font-bold py-2 rounded-lg text-sm transition-colors ${
-                conferencesSaved
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-700 hover:bg-gray-600 text-white"
-              }`}
-            >
+                conferencesSaved ? "bg-blue-600 text-white" : "bg-gray-700 hover:bg-gray-600 text-white"
+              }`}>
               {savingConferences ? "Saving..." : conferencesSaved ? "✓ Saved!" : "Save Conference Assignments"}
             </button>
           </div>
         )}
 
         {/* Links to other tools */}
-        <div className="bg-gray-900 rounded-xl border border-gray-800 divide-y divide-gray-800">
-          <button
-            onClick={() => router.push(`/manual-draft/${leagueId}`)}
-            className="w-full text-left px-6 py-4 hover:bg-gray-800 transition-colors flex items-center justify-between"
-          >
+        <div className="bg-gray-900 rounded-xl border border-gray-700 divide-y divide-gray-800">
+          <button onClick={() => router.push(`/manual-draft/${leagueId}`)}
+            className="w-full text-left px-6 py-4 hover:bg-gray-800 transition-colors flex items-center justify-between">
             <div>
               <p className="font-bold text-white">Manual Draft Upload</p>
               <p className="text-gray-500 text-xs mt-0.5">Enter draft results if your league drafted offline</p>
@@ -410,10 +417,8 @@ export default function CommissionerToolsPage() {
             <span className="text-gray-600">→</span>
           </button>
 
-          <button
-            onClick={() => router.push(`/league-settings/${leagueId}`)}
-            className="w-full text-left px-6 py-4 hover:bg-gray-800 transition-colors flex items-center justify-between"
-          >
+          <button onClick={() => router.push(`/league-settings/${leagueId}`)}
+            className="w-full text-left px-6 py-4 hover:bg-gray-800 transition-colors flex items-center justify-between">
             <div>
               <p className="font-bold text-white">Scoring Settings</p>
               <p className="text-gray-500 text-xs mt-0.5">Customize point values and conference names</p>
@@ -421,10 +426,8 @@ export default function CommissionerToolsPage() {
             <span className="text-gray-600">→</span>
           </button>
 
-          <button
-            onClick={() => router.push(`/league-email/${leagueId}`)}
-            className="w-full text-left px-6 py-4 hover:bg-gray-800 transition-colors flex items-center justify-between"
-          >
+          <button onClick={() => router.push(`/league-email/${leagueId}`)}
+            className="w-full text-left px-6 py-4 hover:bg-gray-800 transition-colors flex items-center justify-between">
             <div>
               <p className="font-bold text-white">✉ Email League</p>
               <p className="text-gray-500 text-xs mt-0.5">Send a message to your league members</p>
