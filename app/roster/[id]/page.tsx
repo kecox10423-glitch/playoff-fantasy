@@ -50,7 +50,7 @@ function PlayerAvatar({ name, position, sleeperId, teamAbbr }: {
 
   let imgUrl: string | null = null;
   if (position === "DST" && teamAbbr) {
-    imgUrl = `https://sleepercdn.com/images/team_logos/nfl/${teamAbbr.toLowerCase()}.jpg`;
+    imgUrl = `https://a.espncdn.com/i/teamlogos/nfl/500/${teamAbbr.toLowerCase()}.png`;
   } else if (sleeperId && !imgError) {
     imgUrl = `https://sleepercdn.com/content/nfl/players/thumb/${sleeperId}.jpg`;
   }
@@ -476,7 +476,7 @@ export default function RosterPage() {
                     if (groupPlayers.length === 0) return null;
                     return (
                       <div key={group.label}>
-                        <div className="px-4 py-1.5 border-t border-gray-700 bg-gray-850">
+                        <div className="px-4 py-1.5 border-t border-gray-700">
                           <span className="text-xs font-black text-gray-500 uppercase tracking-widest">{group.label}</span>
                         </div>
                         <div className="grid px-4 py-1.5 text-xs text-gray-600 font-bold uppercase bg-gray-900 border-b border-gray-800" style={{ gridTemplateColumns: GRID_COLS }}>

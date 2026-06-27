@@ -69,7 +69,7 @@ function PlayerAvatar({ name, position, sleeperId, teamAbbr }: {
 
   let imgUrl: string | null = null;
   if (position === "DST" && teamAbbr) {
-    imgUrl = `https://sleepercdn.com/images/team_logos/nfl/${teamAbbr.toLowerCase()}.jpg`;
+    imgUrl = `https://a.espncdn.com/i/teamlogos/nfl/500/${teamAbbr.toLowerCase()}.png`;
   } else if (sleeperId && !imgError) {
     imgUrl = `https://sleepercdn.com/content/nfl/players/thumb/${sleeperId}.jpg`;
   }
