@@ -57,13 +57,35 @@ function PFFLLogo({ size = 28 }: { size?: number }) {
   return <img src="/apple-touch-icon.png" alt="PFFL Logo" width={size} height={size} style={{ borderRadius: "20%" }} />;
 }
 
-function PlayerAvatar({ name, position }: { name: string; position: string }) {
-  const initials = name.split(" ").map(n => n[0]).join("").substring(0, 2).toUpperCase();
+function PlayerAvatar({ name, position, sleeperId, teamAbbr }: {
+  name: string; position: string; sleeperId?: string | null; teamAbbr?: string | null;
+}) {
+  const [imgError, setImgError] = useState(false);
   const colors: { [key: string]: string } = {
     QB: "bg-red-800 text-red-200", RB: "bg-blue-800 text-blue-200",
     WR: "bg-yellow-800 text-yellow-200", TE: "bg-purple-800 text-purple-200",
     K: "bg-gray-700 text-gray-300", DST: "bg-orange-800 text-orange-200",
   };
+
+  let imgUrl: string | null = null;
+  if (position === "DST" && teamAbbr) {
+    imgUrl = `https://sleepercdn.com/images/team_logos/nfl/${teamAbbr.toLowerCase()}.jpg`;
+  } else if (sleeperId && !imgError) {
+    imgUrl = `https://sleepercdn.com/content/nfl/players/thumb/${sleeperId}.jpg`;
+  }
+
+  if (imgUrl && !imgError) {
+    return (
+      <img
+        src={imgUrl}
+        alt={name}
+        onError={() => setImgError(true)}
+        className="w-9 h-9 rounded-full object-cover flex-shrink-0 bg-gray-800"
+      />
+    );
+  }
+
+  const initials = name.split(" ").map(n => n[0]).join("").substring(0, 2).toUpperCase();
   return (
     <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 ${colors[position] || "bg-gray-700 text-gray-300"}`}>
       {initials}
@@ -718,7 +740,6 @@ export default function DraftPage() {
     pickStartTimeRef.current = pickStartTime;
     setTimeLeft(TIMER_SECONDS);
 
-    // Play sound and show drafted flash
     playPickMadeSound();
     if (player) {
       setDraftedFlash({ name: player.name, position: player.position });
@@ -807,7 +828,6 @@ export default function DraftPage() {
   return (
     <div className="h-screen bg-gray-950 text-white flex flex-col overflow-hidden">
 
-      {/* DRAFTED FLASH OVERLAY */}
       {draftedFlash && (
         <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
           <div className="bg-green-600 text-white px-10 py-6 rounded-2xl shadow-2xl animate-bounce text-center">
@@ -1111,7 +1131,12 @@ export default function DraftPage() {
                     className={`grid items-center border-b border-gray-800 px-3 py-2 min-w-max transition-colors ${picked ? "opacity-30 bg-gray-950" : "hover:bg-gray-900"}`}
                     style={{ gridTemplateColumns: gridCols }}>
                     <span className="text-xs text-gray-600">{index + 1}</span>
-                    <PlayerAvatar name={player.name} position={player.position} />
+                    <PlayerAvatar
+                      name={player.name}
+                      position={player.position}
+                      sleeperId={player.sleeper_id}
+                      teamAbbr={player.nfl_teams?.abbreviation}
+                    />
                     <div className="pl-2 min-w-0">
                       <p className={`font-bold text-sm truncate ${picked ? "line-through text-gray-500" : "text-white"}`}>{player.name}</p>
                       <p className="text-xs text-gray-500">{player.nfl_teams?.abbreviation} · Seed {player.nfl_teams?.seed || "—"}</p>
@@ -1156,7 +1181,12 @@ export default function DraftPage() {
                   <div key={player.id}
                     className={`px-3 py-3 border-b border-gray-800 flex items-center gap-3 ${picked ? "opacity-30 bg-gray-950" : ""}`}>
                     <span className="text-xs text-gray-600 w-5 text-center flex-shrink-0">{index + 1}</span>
-                    <PlayerAvatar name={player.name} position={player.position} />
+                    <PlayerAvatar
+                      name={player.name}
+                      position={player.position}
+                      sleeperId={player.sleeper_id}
+                      teamAbbr={player.nfl_teams?.abbreviation}
+                    />
                     <div className="flex-1 min-w-0">
                       <p className={`font-bold text-sm truncate ${picked ? "line-through text-gray-500" : "text-white"}`}>{player.name}</p>
                       <p className="text-xs text-gray-500">
@@ -1218,7 +1248,14 @@ export default function DraftPage() {
                   return (
                     <div key={pick.id} className={`flex items-center gap-2 px-2 py-2 rounded mb-1 ${isMe ? "bg-green-950 border border-green-900" : "bg-gray-800"}`}>
                       <span className="text-xs text-gray-600 w-5 text-right flex-shrink-0 font-mono">{pick.pick_number}</span>
-                      {player && <PlayerAvatar name={player.name} position={player.position} />}
+                      {player && (
+                        <PlayerAvatar
+                          name={player.name}
+                          position={player.position}
+                          sleeperId={player.sleeper_id}
+                          teamAbbr={player.nfl_teams?.abbreviation}
+                        />
+                      )}
                       <div className="min-w-0 flex-1">
                         <p className="text-xs font-bold text-white truncate">{player?.name}</p>
                         <p className="text-xs text-gray-500 truncate">{player?.position} · {owner?.team_name}</p>
