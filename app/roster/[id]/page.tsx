@@ -24,7 +24,7 @@ const AVATAR_COLORS = [
   { name: "lime", hex: "#65a30d" },
 ];
 
-function Avatar({ member, size = "md" }: { member: any; size?: "sm" | "md" | "lg" }) {
+function TeamAvatar({ member, size = "md" }: { member: any; size?: "sm" | "md" | "lg" }) {
   const sizeClass = size === "sm" ? "w-8 h-8 text-xs" : size === "lg" ? "w-14 h-14 text-xl" : "w-10 h-10 text-sm";
   const initials = member.team_name.split(" ").map((w: string) => w[0]).join("").substring(0, 2).toUpperCase();
   if (member.avatar_url) {
@@ -33,6 +33,42 @@ function Avatar({ member, size = "md" }: { member: any; size?: "sm" | "md" | "lg
   const color = AVATAR_COLORS.find(c => c.name === member.avatar_color) || AVATAR_COLORS[0];
   return (
     <div className={`${sizeClass} rounded-full flex items-center justify-center font-black flex-shrink-0`} style={{ backgroundColor: color.hex }}>
+      {initials}
+    </div>
+  );
+}
+
+function PlayerAvatar({ name, position, sleeperId, teamAbbr }: {
+  name: string; position: string; sleeperId?: string | null; teamAbbr?: string | null;
+}) {
+  const [imgError, setImgError] = useState(false);
+  const colors: { [key: string]: string } = {
+    QB: "bg-red-800 text-red-200", RB: "bg-blue-800 text-blue-200",
+    WR: "bg-yellow-800 text-yellow-200", TE: "bg-purple-800 text-purple-200",
+    K: "bg-gray-700 text-gray-300", DST: "bg-orange-800 text-orange-200",
+  };
+
+  let imgUrl: string | null = null;
+  if (position === "DST" && teamAbbr) {
+    imgUrl = `https://sleepercdn.com/images/team_logos/nfl/${teamAbbr.toLowerCase()}.jpg`;
+  } else if (sleeperId && !imgError) {
+    imgUrl = `https://sleepercdn.com/content/nfl/players/thumb/${sleeperId}.jpg`;
+  }
+
+  if (imgUrl && !imgError) {
+    return (
+      <img
+        src={imgUrl}
+        alt={name}
+        onError={() => setImgError(true)}
+        className="w-9 h-9 rounded-full object-cover flex-shrink-0 bg-gray-800"
+      />
+    );
+  }
+
+  const initials = name.split(" ").map(n => n[0]).join("").substring(0, 2).toUpperCase();
+  return (
+    <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 ${colors[position] || "bg-gray-700 text-gray-300"}`}>
       {initials}
     </div>
   );
@@ -59,7 +95,7 @@ function fmt(val: any, decimals = 0): string {
 
 const MAX_STAT_COLS = 8;
 const STAT_COL_WIDTH = "4rem";
-const GRID_COLS = `3rem 14rem 6rem ${Array(MAX_STAT_COLS).fill(STAT_COL_WIDTH).join(" ")}`;
+const GRID_COLS = `3rem 2.5rem 13rem 6rem ${Array(MAX_STAT_COLS).fill(STAT_COL_WIDTH).join(" ")}`;
 
 const POSITION_GROUPS = [
   {
@@ -283,12 +319,11 @@ export default function RosterPage() {
 
       <div className="max-w-7xl mx-auto px-4 py-6">
 
-        {/* Controls Row */}
         <div className="flex flex-wrap gap-4 items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             <label className="text-gray-400 text-sm whitespace-nowrap">Team:</label>
             <div className="flex items-center gap-2 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2">
-              {selectedMember && <Avatar member={selectedMember} size="sm" />}
+              {selectedMember && <TeamAvatar member={selectedMember} size="sm" />}
               <select
                 value={selectedUserId || ""}
                 onChange={(e) => setSelectedUserId(e.target.value)}
@@ -323,7 +358,6 @@ export default function RosterPage() {
           </div>
         </div>
 
-        {/* Tabs */}
         <div className="flex border-b border-gray-800 mb-6 gap-1">
           <button
             onClick={() => setActiveTab("season")}
@@ -397,19 +431,20 @@ export default function RosterPage() {
                         return (
                           <div
                             key={player.id}
-                            className={`bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 mb-2 flex items-center justify-between ${isEliminated ? "opacity-50" : ""}`}
+                            className={`bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 mb-2 flex items-center gap-3 ${isEliminated ? "opacity-50" : ""}`}
                           >
-                            <div className="flex items-center gap-3">
-                              <span className={`text-xs font-black px-1.5 py-0.5 rounded ${getPositionBadge(player.position)}`}>
-                                {player.position}
-                              </span>
-                              <div>
-                                <p className={`font-bold text-sm ${isEliminated ? "line-through text-gray-500" : "text-white"}`}>
-                                  {player.name}
-                                  {isEliminated && <span className="ml-2 text-xs bg-red-900 text-red-400 px-1.5 py-0.5 rounded">ELIM</span>}
-                                </p>
-                                <p className="text-xs text-gray-500">{player.nfl_teams?.abbreviation} · Seed {player.nfl_teams?.seed}</p>
-                              </div>
+                            <PlayerAvatar
+                              name={player.name}
+                              position={player.position}
+                              sleeperId={player.sleeper_id}
+                              teamAbbr={player.nfl_teams?.abbreviation}
+                            />
+                            <div className="flex-1 min-w-0">
+                              <p className={`font-bold text-sm ${isEliminated ? "line-through text-gray-500" : "text-white"}`}>
+                                {player.name}
+                                {isEliminated && <span className="ml-2 text-xs bg-red-900 text-red-400 px-1.5 py-0.5 rounded">ELIM</span>}
+                              </p>
+                              <p className="text-xs text-gray-500">{player.nfl_teams?.abbreviation} · Seed {player.nfl_teams?.seed}</p>
                             </div>
                             <div className="text-right flex-shrink-0">
                               <p className={`text-sm font-bold ${fpts === "—" ? "text-gray-600" : "text-green-400"}`}>{fpts} pts</p>
@@ -429,6 +464,7 @@ export default function RosterPage() {
                 <div className="bg-gray-800 rounded-t-lg min-w-max">
                   <div className="grid px-4 py-2 text-xs text-gray-500 font-bold uppercase" style={{ gridTemplateColumns: GRID_COLS }}>
                     <span>POS</span>
+                    <span></span>
                     <span>PLAYER</span>
                     <span>OPP</span>
                     {Array(MAX_STAT_COLS).fill(null).map((_, i) => <span key={i} className="text-right">—</span>)}
@@ -444,7 +480,7 @@ export default function RosterPage() {
                           <span className="text-xs font-black text-gray-500 uppercase tracking-widest">{group.label}</span>
                         </div>
                         <div className="grid px-4 py-1.5 text-xs text-gray-600 font-bold uppercase bg-gray-900 border-b border-gray-800" style={{ gridTemplateColumns: GRID_COLS }}>
-                          <span></span><span></span><span></span>
+                          <span></span><span></span><span></span><span></span>
                           {group.cols.map((col, i) => (
                             <span key={i} className={`text-right ${(col as any).highlight ? "text-green-500" : ""}`}>{col.header}</span>
                           ))}
@@ -464,6 +500,12 @@ export default function RosterPage() {
                                 <span className={`text-xs font-black px-1.5 py-0.5 rounded text-center w-fit ${getPositionBadge(player.position)}`}>
                                   {player.position}
                                 </span>
+                                <PlayerAvatar
+                                  name={player.name}
+                                  position={player.position}
+                                  sleeperId={player.sleeper_id}
+                                  teamAbbr={player.nfl_teams?.abbreviation}
+                                />
                                 <div className="min-w-0 pr-2">
                                   <div className="flex items-center gap-2">
                                     <p className={`font-bold text-sm truncate ${isEliminated ? "line-through text-gray-500" : "text-white"}`}>{player.name}</p>
@@ -496,7 +538,7 @@ export default function RosterPage() {
 
             <div className="bg-gray-800 rounded-lg p-4 flex justify-between items-center mt-4 sticky bottom-4 border border-gray-700">
               <div className="flex items-center gap-3">
-                {selectedMember && <Avatar member={selectedMember} size="md" />}
+                {selectedMember && <TeamAvatar member={selectedMember} size="md" />}
                 <div>
                   <p className="font-black text-lg">{selectedMember?.team_name}</p>
                   <p className="text-gray-400 text-sm">{activeCount} active · {eliminatedCount} eliminated</p>
