@@ -161,6 +161,7 @@ type MobileTab = "roster" | "players" | "board";
 export default function DraftPage() {
   const [league, setLeague] = useState<any>(null);
   const [members, setMembers] = useState<any[]>([]);
+  const [draftOrder, setDraftOrder] = useState<any[]>([]); // frozen snapshot
   const [players, setPlayers] = useState<any[]>([]);
   const [picks, setPicks] = useState<any[]>([]);
   const [user, setUser] = useState<any>(null);
@@ -190,12 +191,14 @@ export default function DraftPage() {
   const countdownRef = useRef<any>(null);
   const picksRef = useRef<any[]>([]);
   const membersRef = useRef<any[]>([]);
+  const draftOrderRef = useRef<any[]>([]);
   const leagueRef = useRef<any>(null);
   const userRef = useRef<any>(null);
   const playersRef = useRef<any[]>([]);
   const onlineUserIdsRef = useRef<string[]>([]);
   const allQueuesRef = useRef<{ [userId: string]: number[] }>({});
   const chatEndRef = useRef<any>(null);
+  const pickStripRef = useRef<HTMLDivElement>(null);
   const wasMyTurnRef = useRef(false);
   const autoPickEnabledRef = useRef(false);
   const pickStartTimeRef = useRef<string | null>(null);
@@ -208,6 +211,7 @@ export default function DraftPage() {
 
   useEffect(() => { picksRef.current = picks; }, [picks]);
   useEffect(() => { membersRef.current = members; }, [members]);
+  useEffect(() => { draftOrderRef.current = draftOrder; }, [draftOrder]);
   useEffect(() => { userRef.current = user; }, [user]);
   useEffect(() => { leagueRef.current = league; }, [league]);
   useEffect(() => { playersRef.current = players; }, [players]);
@@ -215,6 +219,32 @@ export default function DraftPage() {
   useEffect(() => { onlineUserIdsRef.current = onlineUserIds; }, [onlineUserIds]);
   useEffect(() => { allQueuesRef.current = allQueues; }, [allQueues]);
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatMessages]);
+
+  // Scroll pick strip to keep current pick in view
+  useEffect(() => {
+    if (!pickStripRef.current || draftOrder.length === 0) return;
+    const currentPickIndex = picks.length;
+    const itemWidth = 64; // px per pick item
+    const containerWidth = pickStripRef.current.offsetWidth;
+    const scrollTo = Math.max(0, currentPickIndex * itemWidth - containerWidth / 2 + itemWidth / 2);
+    pickStripRef.current.scrollTo({ left: scrollTo, behavior: "smooth" });
+  }, [picks.length, draftOrder.length]);
+
+  // Build the full pick sequence from draft order
+  function buildPickSequence(order: any[], totalRounds: number): { pickNumber: number; member: any; round: number }[] {
+    const seq: { pickNumber: number; member: any; round: number }[] = [];
+    for (let round = 1; round <= totalRounds; round++) {
+      const roundOrder = round % 2 === 0 ? [...order].reverse() : [...order];
+      roundOrder.forEach((member, i) => {
+        seq.push({
+          pickNumber: (round - 1) * order.length + i + 1,
+          member,
+          round,
+        });
+      });
+    }
+    return seq;
+  }
 
   function getTimeLeftFromServer(pickStartTime: string | null): number {
     if (!pickStartTime) return TIMER_SECONDS;
@@ -248,6 +278,16 @@ export default function DraftPage() {
     );
   }
 
+  // Use frozen draft order for pick owner calculation
+  function getPickOwnerFromOrder(pickNumber: number, order: any[]): any {
+    if (!order.length) return null;
+    const numTeams = order.length;
+    const round = Math.ceil(pickNumber / numTeams);
+    const posInRound = (pickNumber - 1) % numTeams;
+    const index = round % 2 === 0 ? numTeams - 1 - posInRound : posInRound;
+    return order[index];
+  }
+
   function getBestAutoPick(userId: string, pickedIds: number[], userPicks: any[]): any {
     const currentPlayers = playersRef.current;
     const positionCounts: { [pos: string]: number } = {};
@@ -272,25 +312,24 @@ export default function DraftPage() {
 
   async function executeAutoPick(userId: string) {
     const currentPicks = picksRef.current;
-    const currentMembers = membersRef.current;
-    if (!currentMembers.length) return;
+    const currentOrder = draftOrderRef.current;
+    if (!currentOrder.length) return;
 
     const pickNumber = currentPicks.length + 1;
     if (currentPicks.some(p => p.pick_number === pickNumber)) return;
 
-    const numTeams = currentMembers.length;
-    const round = Math.ceil(pickNumber / numTeams);
-    const posInRound = (pickNumber - 1) % numTeams;
-    const index = round % 2 === 0 ? numTeams - 1 - posInRound : posInRound;
-    const owner = currentMembers[index];
+    const owner = getPickOwnerFromOrder(pickNumber, currentOrder);
     if (!owner || owner.user_id !== userId) return;
+
+    const numTeams = currentOrder.length;
+    const round = Math.ceil(pickNumber / numTeams);
+    const pickInRound = ((pickNumber - 1) % numTeams) + 1;
 
     const pickedIds = currentPicks.map((p: any) => p.player_id);
     const userPicks = currentPicks.filter((p: any) => p.user_id === userId);
     const available = getBestAutoPick(userId, pickedIds, userPicks);
     if (!available) return;
 
-    const pickInRound = ((pickNumber - 1) % numTeams) + 1;
     const pickStartTime = new Date().toISOString();
 
     const newPick = {
@@ -365,16 +404,13 @@ export default function DraftPage() {
           pass_attempts: stats.pass_attempts,
           pass_yards: stats.pass_yards,
           pass_tds: stats.pass_tds,
-          pass_first_downs: stats.pass_first_downs,
           interceptions: stats.interceptions,
           rush_attempts: stats.rush_attempts,
           rush_yards: stats.rush_yards,
           rush_tds: stats.rush_tds,
-          rush_first_downs: stats.rush_first_downs,
           receptions: stats.receptions,
           rec_yards: stats.rec_yards,
           rec_tds: stats.rec_tds,
-          rec_first_downs: stats.rec_first_downs,
           fg_made: stats.fg_made,
           fg_attempts: stats.fg_attempts,
           fg_0_39: stats.fg_0_39,
@@ -398,10 +434,19 @@ export default function DraftPage() {
         queuesMap[q.user_id].push(q.player_id);
       });
 
+      // Use frozen draft_order if available, fall back to members ordered by draft_position
+      const frozenOrder = leagueData?.draft_order
+        ? (leagueData.draft_order as string[]).map((userId: string) =>
+            (membersData || []).find((m: any) => m.user_id === userId)
+          ).filter(Boolean)
+        : (membersData || []);
+
       setLeague(leagueData);
       leagueRef.current = leagueData;
       setMembers(membersData || []);
       membersRef.current = membersData || [];
+      setDraftOrder(frozenOrder);
+      draftOrderRef.current = frozenOrder;
       setPlayers(playersWithStats);
       playersRef.current = playersWithStats;
       setPicks(picksData || []);
@@ -419,7 +464,7 @@ export default function DraftPage() {
         setTimeLeft(getTimeLeftFromServer(leagueData.pick_start_time));
       }
 
-      const totalP = (membersData || []).length * TOTAL_PICKS_PER_TEAM;
+      const totalP = (frozenOrder.length) * TOTAL_PICKS_PER_TEAM;
       if (leagueData?.draft_status === "IN_PROGRESS" && (picksData || []).length >= totalP && totalP > 0) {
         await supabase.from("leagues").update({ draft_status: "COMPLETED" }).eq("id", leagueId);
         setLeague((prev: any) => ({ ...prev, draft_status: "COMPLETED" }));
@@ -451,6 +496,14 @@ export default function DraftPage() {
             if (payload.new.pick_start_time) {
               pickStartTimeRef.current = payload.new.pick_start_time;
               setTimeLeft(getTimeLeftFromServer(payload.new.pick_start_time));
+            }
+            // Update frozen draft order if it just got set
+            if (payload.new.draft_order && !draftOrderRef.current.length) {
+              const newOrder = (payload.new.draft_order as string[])
+                .map((userId: string) => membersRef.current.find((m: any) => m.user_id === userId))
+                .filter(Boolean);
+              setDraftOrder(newOrder);
+              draftOrderRef.current = newOrder;
             }
           })
         .subscribe();
@@ -532,16 +585,12 @@ export default function DraftPage() {
       if (tl <= 0 && !autoPickFiredRef.current) {
         autoPickFiredRef.current = true;
         const currentPicks = picksRef.current;
-        const currentMembers = membersRef.current;
+        const currentOrder = draftOrderRef.current;
         const currentUser = userRef.current;
-        if (!currentUser || !currentMembers.length) return;
+        if (!currentUser || !currentOrder.length) return;
 
         const pickNumber = currentPicks.length + 1;
-        const numTeams = currentMembers.length;
-        const round = Math.ceil(pickNumber / numTeams);
-        const posInRound = (pickNumber - 1) % numTeams;
-        const index = round % 2 === 0 ? numTeams - 1 - posInRound : posInRound;
-        const owner = currentMembers[index];
+        const owner = getPickOwnerFromOrder(pickNumber, currentOrder);
         if (!owner) return;
 
         if (owner.user_id === currentUser.id) {
@@ -558,15 +607,11 @@ export default function DraftPage() {
   useEffect(() => {
     if (loading || league?.draft_status !== "IN_PROGRESS") return;
     const currentPicks = picksRef.current;
-    const currentMembers = membersRef.current;
-    if (!currentMembers.length) return;
+    const currentOrder = draftOrderRef.current;
+    if (!currentOrder.length) return;
 
     const pickNumber = currentPicks.length + 1;
-    const numTeams = currentMembers.length;
-    const round = Math.ceil(pickNumber / numTeams);
-    const posInRound = (pickNumber - 1) % numTeams;
-    const index = round % 2 === 0 ? numTeams - 1 - posInRound : posInRound;
-    const owner = currentMembers[index];
+    const owner = getPickOwnerFromOrder(pickNumber, currentOrder);
     const myTurn = owner?.user_id === user?.id;
     const ownerIsOffline = owner ? !onlineUserIdsRef.current.includes(owner.user_id) : false;
 
@@ -633,7 +678,7 @@ export default function DraftPage() {
 
   useEffect(() => {
     if (loading || !league || !user) return;
-    const totalPicks = membersRef.current.length * TOTAL_PICKS_PER_TEAM;
+    const totalPicks = draftOrderRef.current.length * TOTAL_PICKS_PER_TEAM;
     const isDraftComplete = picks.length >= totalPicks && totalPicks > 0;
     if (isDraftComplete && !rosterEmailSent && user.id === league.commissioner_user_id) {
       setRosterEmailSent(true);
@@ -646,28 +691,27 @@ export default function DraftPage() {
     setStartingDraft(true);
     const now = new Date().toISOString();
     pickStartTimeRef.current = now;
+
+    // Snapshot the current member order as draft_order
+    const currentMembers = membersRef.current;
+    const orderSnapshot = currentMembers.map((m: any) => m.user_id);
+
     await supabase.from("leagues").update({
-      draft_status: "IN_PROGRESS", pick_start_time: now,
+      draft_status: "IN_PROGRESS",
+      pick_start_time: now,
+      draft_order: orderSnapshot,
     }).eq("id", leagueId);
-    setLeague((prev: any) => ({ ...prev, draft_status: "IN_PROGRESS", pick_start_time: now }));
-    leagueRef.current = { ...leagueRef.current, draft_status: "IN_PROGRESS", pick_start_time: now };
+
+    setDraftOrder(currentMembers);
+    draftOrderRef.current = currentMembers;
+    setLeague((prev: any) => ({ ...prev, draft_status: "IN_PROGRESS", pick_start_time: now, draft_order: orderSnapshot }));
+    leagueRef.current = { ...leagueRef.current, draft_status: "IN_PROGRESS", pick_start_time: now, draft_order: orderSnapshot };
     setTimeLeft(TIMER_SECONDS);
     setStartingDraft(false);
   }
 
   function getPickOwner(pickNumber: number) {
-    const m = membersRef.current;
-    if (!m.length) return null;
-    const numTeams = m.length;
-    const round = Math.ceil(pickNumber / numTeams);
-    const posInRound = ((pickNumber - 1) % numTeams);
-    const index = round % 2 === 0 ? numTeams - 1 - posInRound : posInRound;
-    return m[index];
-  }
-
-  function getSnakeOrderForRound(round: number) {
-    if (!members.length) return [];
-    return round % 2 === 0 ? [...members].reverse() : [...members];
+    return getPickOwnerFromOrder(pickNumber, draftOrderRef.current);
   }
 
   function isMyTurn() { return getPickOwner(picks.length + 1)?.user_id === user?.id; }
@@ -724,8 +768,9 @@ export default function DraftPage() {
     }
 
     const currentPicks = picksRef.current;
+    const currentOrder = draftOrderRef.current;
     const pickNumber = currentPicks.length + 1;
-    const numTeams = members.length;
+    const numTeams = currentOrder.length;
     const round = Math.ceil(pickNumber / numTeams);
     const pickInRound = ((pickNumber - 1) % numTeams) + 1;
     const pickStartTime = new Date().toISOString();
@@ -776,21 +821,19 @@ export default function DraftPage() {
   }
 
   const isPreDraft = league?.draft_status !== "IN_PROGRESS" && league?.draft_status !== "COMPLETED";
-  const totalPicks = members.length * TOTAL_PICKS_PER_TEAM;
-  const draftComplete = picks.length >= totalPicks;
+  const totalPicks = draftOrder.length * TOTAL_PICKS_PER_TEAM;
+  const draftComplete = picks.length >= totalPicks && totalPicks > 0;
   const currentPickNumber = picks.length + 1;
   const currentPickOwner = getPickOwner(currentPickNumber);
-  const nextPickOwner = draftComplete ? null : getPickOwner(currentPickNumber + 1);
   const lastPick = picks.length > 0 ? picks[picks.length - 1] : null;
   const lastPickPlayer = lastPick ? players.find(p => p.id === lastPick.player_id) : null;
   const lastPickOwner = lastPick ? members.find(m => m.user_id === lastPick.user_id) : null;
   const autoPickPlayer = [...players].filter(p => !isPickedAlready(p.id)).sort((a, b) => (b.fantasy_points || 0) - (a.fantasy_points || 0))[0];
-  const currentRound = Math.ceil(currentPickNumber / (members.length || 1));
+  const currentRound = draftOrder.length > 0 ? Math.ceil(currentPickNumber / draftOrder.length) : 1;
   const isCommissioner = user?.id === league?.commissioner_user_id;
-  const isEvenRound = currentRound % 2 === 0;
-  const snakeOrderThisRound = getSnakeOrderForRound(currentRound);
-  const picksThisRoundCount = picks.filter(p => p.round === currentRound).length;
   const currentOwnerOnline = currentPickOwner ? onlineUserIds.includes(currentPickOwner.user_id) : true;
+
+  const pickSequence = draftOrder.length > 0 ? buildPickSequence(draftOrder, TOTAL_PICKS_PER_TEAM) : [];
 
   const queuedPlayers = queue.map(id => players.find(p => p.id === id)).filter(Boolean).filter((p: any) => !isPickedAlready(p.id));
   const statCols = STAT_COLS[positionFilter] || STAT_COLS.ALL;
@@ -840,6 +883,7 @@ export default function DraftPage() {
 
       <div className="bg-gray-900 border-b border-gray-800 flex-shrink-0">
 
+        {/* Top bar: logo | timer | controls */}
         <div className="px-3 py-2 flex items-center justify-between border-b border-gray-800 gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <PFFLLogo size={24} />
@@ -899,6 +943,7 @@ export default function DraftPage() {
           </div>
         </div>
 
+        {/* On clock / status bar */}
         <div className={`px-3 py-2 flex items-center justify-between gap-2 ${
           countdownWarning && isPreDraft ? "bg-red-950" :
           isMyTurn() && !draftComplete && !isPreDraft ? "bg-green-900" : ""
@@ -953,58 +998,88 @@ export default function DraftPage() {
           </div>
         )}
 
-        <div className="border-t border-gray-800 px-3 py-2 overflow-x-auto">
+        {/* Pick strip — scrolling ticker */}
+        <div className="border-t border-gray-800">
           {isPreDraft ? (
-            <div className="flex items-center gap-2 min-w-max">
-              <p className="text-gray-600 text-xs mr-1 flex-shrink-0">Draft Order:</p>
-              {members.map((member, i) => {
-                const isMe = member.user_id === user?.id;
-                const isOnline = onlineUserIds.includes(member.user_id);
-                return (
-                  <div key={member.id} className="flex flex-col items-center">
-                    <div className={`relative w-8 h-8 rounded-full flex items-center justify-center text-xs font-black ${isMe ? "bg-green-600" : "bg-gray-700"} ${!isOnline ? "opacity-40" : ""}`}>
-                      {member.team_name.charAt(0).toUpperCase()}
-                      {isOnline && <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-green-500 rounded-full border border-gray-900" />}
+            <div className="px-3 py-2 overflow-x-auto">
+              <div className="flex items-center gap-2 min-w-max">
+                <p className="text-gray-600 text-xs mr-1 flex-shrink-0">Draft Order:</p>
+                {members.map((member, i) => {
+                  const isMe = member.user_id === user?.id;
+                  const isOnline = onlineUserIds.includes(member.user_id);
+                  return (
+                    <div key={member.id} className="flex flex-col items-center">
+                      <div className={`relative w-8 h-8 rounded-full flex items-center justify-center text-xs font-black ${isMe ? "bg-green-600" : "bg-gray-700"} ${!isOnline ? "opacity-40" : ""}`}>
+                        {member.team_name.charAt(0).toUpperCase()}
+                        {isOnline && <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-green-500 rounded-full border border-gray-900" />}
+                      </div>
+                      <p className="text-xs text-gray-500 mt-0.5 font-mono">{i + 1}</p>
                     </div>
-                    <p className="text-xs text-gray-500 mt-0.5 font-mono">{i + 1}</p>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           ) : draftComplete ? (
-            <p className="text-gray-600 text-xs text-center py-1">🏆 Draft Complete — Good Luck!</p>
+            <p className="text-gray-600 text-xs text-center py-2">🏆 Draft Complete — Good Luck!</p>
           ) : (
-            <div className="flex items-center gap-1 min-w-max">
-              <div className="flex flex-col items-center mr-2 flex-shrink-0">
-                <p className="text-gray-500 text-xs font-bold">Rd {currentRound}</p>
-                <p className="text-gray-600 text-xs">{isEvenRound ? "←" : "→"}</p>
-              </div>
-              {snakeOrderThisRound.map((member, posInRound) => {
-                const isOnClock = member.user_id === currentPickOwner?.user_id;
-                const isNext = member.user_id === nextPickOwner?.user_id && !isOnClock;
+            <div
+              ref={pickStripRef}
+              className="overflow-x-auto flex items-center gap-1 px-3 py-2 scroll-smooth"
+              style={{ scrollbarWidth: "none" }}
+            >
+              {pickSequence.map(({ pickNumber, member, round }) => {
+                const isCurrent = pickNumber === currentPickNumber;
+                const isPast = pickNumber < currentPickNumber;
                 const isMe = member.user_id === user?.id;
-                const hasPicked = posInRound < picksThisRoundCount;
-                const isOffline = !onlineUserIds.includes(member.user_id);
-                const memberTotalPicks = picks.filter(p => p.user_id === member.user_id).length;
+                const isOnline = onlineUserIds.includes(member.user_id);
+                const pick = picks.find(p => p.pick_number === pickNumber);
+                const pickedPlayer = pick ? players.find(pl => pl.id === pick.player_id) : null;
+
                 return (
-                  <div key={member.id} className="flex flex-col items-center">
-                    <p className={`text-xs font-mono mb-0.5 ${isOnClock ? "text-yellow-400 font-bold" : isNext ? "text-gray-400" : "text-gray-700"}`}>
-                      {(currentRound - 1) * members.length + posInRound + 1}
+                  <div
+                    key={pickNumber}
+                    className="flex flex-col items-center flex-shrink-0"
+                    style={{ minWidth: "3.5rem" }}
+                  >
+                    <p className={`text-xs font-mono mb-0.5 leading-none ${isCurrent ? "text-yellow-400 font-bold" : isPast ? "text-gray-700" : "text-gray-600"}`}>
+                      {pickNumber}
                     </p>
-                    <div className={`relative w-8 h-8 rounded-full flex items-center justify-center text-xs font-black transition-all ${isMe ? "bg-green-600" : "bg-gray-700"} ${
-                      isOnClock ? "ring-2 ring-yellow-400 ring-offset-1 ring-offset-gray-900 scale-110"
-                        : isNext ? "ring-1 ring-gray-500 ring-offset-1 ring-offset-gray-900"
-                        : hasPicked ? "opacity-30" : "opacity-70"
-                    }`}>
-                      {member.team_name.charAt(0).toUpperCase()}
-                      {isOnClock && !isOffline && <span className="absolute -top-1 left-1/2 -translate-x-1/2 text-yellow-400 text-xs leading-none">▼</span>}
-                      {isOffline && <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-gray-600 rounded-full border border-gray-900" />}
-                      {isOnClock && isOffline && <span className="absolute -top-1 left-1/2 -translate-x-1/2 text-gray-500 text-xs leading-none">▼</span>}
+                    <div className={`relative w-9 h-9 rounded-full flex items-center justify-center text-xs font-black transition-all overflow-hidden ${
+                      isCurrent
+                        ? "ring-2 ring-yellow-400 ring-offset-1 ring-offset-gray-900 scale-110 z-10"
+                        : isPast
+                        ? "opacity-25"
+                        : isMe ? "ring-1 ring-green-600 ring-offset-1 ring-offset-gray-900" : ""
+                    } ${isPast ? "bg-gray-800" : isMe ? "bg-green-700" : "bg-gray-700"}`}>
+                      {isPast && pickedPlayer ? (
+                        <PlayerAvatar
+                          name={pickedPlayer.name}
+                          position={pickedPlayer.position}
+                          sleeperId={pickedPlayer.sleeper_id}
+                          teamAbbr={pickedPlayer.nfl_teams?.abbreviation}
+                        />
+                      ) : (
+                        <>
+                          {member.team_name.charAt(0).toUpperCase()}
+                          {isCurrent && !isOnline && (
+                            <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-gray-600 rounded-full border border-gray-900" />
+                          )}
+                          {isCurrent && isOnline && (
+                            <span className="absolute -top-1 left-1/2 -translate-x-1/2 text-yellow-400 text-xs leading-none">▼</span>
+                          )}
+                        </>
+                      )}
                     </div>
-                    <p className={`text-xs mt-0.5 truncate max-w-10 text-center ${isOnClock ? isOffline ? "text-gray-500" : "text-yellow-300 font-bold" : isNext ? "text-gray-400" : "text-gray-600"}`}>
-                      {member.team_name.split(" ")[0]}
+                    <p className={`text-xs mt-0.5 truncate text-center leading-none ${
+                      isCurrent ? "text-yellow-300 font-bold" : isPast ? "text-gray-700" : isMe ? "text-green-400" : "text-gray-600"
+                    }`} style={{ maxWidth: "3.5rem" }}>
+                      {isPast && pickedPlayer
+                        ? pickedPlayer.name.split(" ").pop()
+                        : member.team_name.split(" ")[0]}
                     </p>
-                    <p className="text-xs text-gray-700 font-mono">{memberTotalPicks}</p>
+                    {!isPast && (
+                      <p className="text-gray-700 text-xs leading-none font-mono">R{round}</p>
+                    )}
                   </div>
                 );
               })}
