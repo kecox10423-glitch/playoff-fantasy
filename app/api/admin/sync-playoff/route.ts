@@ -152,6 +152,240 @@ function buildFloatingMatchups(
   ];
 }
 
+// ── Live beta poller ──────────────────────────────────────────────────────
+// Scoped to the WC round only (real NFL Week 1, standing in for the mock
+// bracket's opening round during the Sept 9 beta). No completeness gate:
+// every call re-pulls whatever Sleeper currently has and overwrites
+// player_stats, then rescores. Safe to call every 1-2 min — everything here
+// is upsert-by-unique-key, so a rerun just overwrites with the latest values.
+async function runLiveSync() {
+  const season = 2026;
+  const round = "WC";
+  const nflWeek = ROUND_TO_NFL_WEEK[round];
+  const dbWeek = ROUND_TO_DB_WEEK[round];
+
+  const errors: { stage: string; id?: number | string; error: string }[] = [];
+
+  const { data: players } = await supabaseAdmin
+    .from("players")
+    .select("*")
+    .eq("season", season);
+
+  if (!players?.length) {
+    return NextResponse.json({ error: "No players found" }, { status: 500 });
+  }
+
+  const sleeperPlayersRes = await fetch("https://api.sleeper.app/v1/players/nfl");
+  const sleeperPlayersData = await sleeperPlayersRes.json();
+
+  const nameToSleeperId: { [name: string]: string } = {};
+  const normalizedToSleeperId: { [name: string]: string } = {};
+
+  for (const [id, player] of Object.entries(sleeperPlayersData as any)) {
+    const p = player as any;
+    if (p.first_name && p.last_name) {
+      const fullName = `${p.first_name} ${p.last_name}`.toLowerCase();
+      nameToSleeperId[fullName] = id;
+      const normalized = normalizeName(`${p.first_name} ${p.last_name}`);
+      if (!normalizedToSleeperId[normalized]) {
+        normalizedToSleeperId[normalized] = id;
+      }
+    }
+  }
+
+  const dstTeamMap: { [abbr: string]: string } = {
+    BAL: "BAL", BUF: "BUF", LAC: "LAC", NE: "NE",
+    KC: "KC", HOU: "HOU", DEN: "DEN",
+    LAR: "LAR", SEA: "SEA", SF: "SF",
+    DET: "DET", PHI: "PHI", GB: "GB", DAL: "DAL",
+  };
+
+  // Pull whatever Sleeper currently has for this week — no completeness gate,
+  // no "already have a row" bail-out. Values are overwritten, not accumulated,
+  // so a corrected/updated stat on the next poll just replaces the old one.
+  let sleeperWeekData: any = {};
+  try {
+    const res = await fetch(
+      `https://api.sleeper.app/v1/stats/nfl/regular/${season}/${nflWeek}`,
+      { next: { revalidate: 0 } }
+    );
+    if (res.ok) sleeperWeekData = await res.json();
+  } catch (e: any) {
+    errors.push({ stage: "sleeper-fetch", error: e.message });
+  }
+
+  const sleeperEntries = Object.entries(sleeperWeekData);
+  const sampleEntries = sleeperEntries.slice(0, 3);
+
+  console.log(
+    `[live-sync] sleeper week ${nflWeek} response: ${sleeperEntries.length} players, ` +
+    `${JSON.stringify(sleeperWeekData).length} bytes`
+  );
+  console.log(`[live-sync] sample:`, JSON.stringify(sampleEntries));
+
+  for (const player of players) {
+    let rawStats: any = null;
+
+    if (player.position === "DST") {
+      const { data: teamData } = await supabaseAdmin
+        .from("nfl_teams")
+        .select("abbreviation")
+        .eq("id", player.nfl_team_id)
+        .single();
+      const abbr = teamData?.abbreviation;
+      const sleeperId = abbr ? dstTeamMap[abbr] : null;
+      rawStats = sleeperId ? sleeperWeekData[sleeperId] : null;
+    } else {
+      const nameLower = player.name.toLowerCase();
+      let sleeperId = SLEEPER_ID_OVERRIDES[nameLower];
+      if (!sleeperId) sleeperId = nameToSleeperId[nameLower];
+      if (!sleeperId) {
+        const normalized = normalizeName(player.name);
+        sleeperId = normalizedToSleeperId[normalized];
+      }
+      rawStats = sleeperId ? sleeperWeekData[sleeperId] : null;
+    }
+
+    const stats = rawStats ? {
+      pass_yards:         rawStats.pass_yd   || 0,
+      pass_tds:           rawStats.pass_td   || 0,
+      interceptions:      rawStats.pass_int  || 0,
+      pass_attempts:      rawStats.pass_att  || 0,
+      pass_completions:   rawStats.pass_cmp  || 0,
+      rush_yards:         rawStats.rush_yd   || 0,
+      rush_tds:           rawStats.rush_td   || 0,
+      rush_attempts:      rawStats.rush_att  || 0,
+      receptions:         rawStats.rec       || 0,
+      rec_yards:          rawStats.rec_yd    || 0,
+      rec_tds:            rawStats.rec_td    || 0,
+      fg_made:            rawStats.fgm       || 0,
+      fg_attempts:        rawStats.fga       || 0,
+      fg_0_39:            (rawStats.fgm_0_19 || 0) + (rawStats.fgm_20_29 || 0) + (rawStats.fgm_30_39 || 0),
+      fg_40_49:           rawStats.fgm_40_49 || 0,
+      fg_50_plus:         rawStats.fgm_50p   || 0,
+      xp_made:            rawStats.xpm       || 0,
+      pat_attempts:       rawStats.xpa       || 0,
+      dst_sacks:          rawStats.sack      || 0,
+      dst_ints:           rawStats.int       || 0,
+      dst_fumbles_rec:    rawStats.fum_rec   || 0,
+      dst_tds:            rawStats.def_td    || 0,
+      dst_safety:         rawStats.safe      || 0,
+      dst_points_allowed: rawStats.pts_allow || 0,
+      dst_tackles:        rawStats.tkl       || 0,
+      fumbles_lost:       rawStats.fum_lost  || 0,
+    } : null;
+
+    const { error: upsertErr } = await supabaseAdmin
+      .from("player_stats")
+      .upsert({
+        player_id: player.id,
+        season,
+        week: dbWeek,
+        ...(stats || {}),
+        fantasy_points: 0,
+      }, { onConflict: "player_id,season,week" });
+
+    if (upsertErr) {
+      errors.push({ stage: "player_stats", id: player.id, error: upsertErr.message });
+    }
+  }
+
+  // ── Batch-recalc scores + standings from current player_stats ───────────
+  // One read of the week's stats instead of one per (member, pick).
+  const { data: currentStats } = await supabaseAdmin
+    .from("player_stats")
+    .select("*")
+    .eq("season", season)
+    .eq("week", dbWeek);
+
+  const statsByPlayerId = new Map((currentStats || []).map(s => [s.player_id, s]));
+  const playersById = new Map(players.map(p => [p.id, p]));
+
+  const { data: leagues } = await supabaseAdmin
+    .from("leagues")
+    .select("*")
+    .eq("draft_status", "COMPLETED");
+
+  for (const league of leagues || []) {
+    const scoringSettings = getSettings(league);
+
+    const { data: leagueMembers } = await supabaseAdmin
+      .from("league_members")
+      .select("user_id")
+      .eq("league_id", league.id);
+
+    const { data: leaguePicks } = await supabaseAdmin
+      .from("draft_picks")
+      .select("user_id, player_id")
+      .eq("league_id", league.id);
+
+    if (!leagueMembers?.length || !leaguePicks?.length) continue;
+
+    const scoreRows = leagueMembers.map(member => {
+      const memberPicks = leaguePicks.filter(p => p.user_id === member.user_id);
+      let weekTotal = 0;
+      let activePlayers = 0;
+
+      for (const pick of memberPicks) {
+        const player = playersById.get(pick.player_id);
+        if (!player || player.is_active === false) continue;
+        activePlayers++;
+        weekTotal += calcPlayerPoints(statsByPlayerId.get(pick.player_id), player.position, scoringSettings);
+      }
+
+      return {
+        league_id: league.id,
+        user_id: member.user_id,
+        week: dbWeek,
+        total_points: Math.round(weekTotal * 10) / 10,
+        active_players: activePlayers,
+      };
+    });
+
+    const { error: scoresErr } = await supabaseAdmin
+      .from("scores")
+      .upsert(scoreRows, { onConflict: "league_id,user_id,week" });
+    if (scoresErr) errors.push({ stage: "scores", id: league.id, error: scoresErr.message });
+
+    const { data: allScores } = await supabaseAdmin
+      .from("scores")
+      .select("*")
+      .eq("league_id", league.id);
+
+    const standingsRows = leagueMembers.map(member => {
+      const memberScores = (allScores || []).filter(s => s.user_id === member.user_id);
+      const total = memberScores.reduce((sum, s) => sum + parseFloat(s.total_points || "0"), 0);
+      return {
+        league_id: league.id,
+        user_id: member.user_id,
+        total_points: Math.round(total * 10) / 10,
+        week_1_points: memberScores.find(s => s.week === 1)?.total_points || 0,
+        week_2_points: memberScores.find(s => s.week === 2)?.total_points || 0,
+        week_3_points: memberScores.find(s => s.week === 3)?.total_points || 0,
+        week_4_points: memberScores.find(s => s.week === 4)?.total_points || 0,
+        updated_at: new Date().toISOString(),
+      };
+    });
+
+    const { error: standingsErr } = await supabaseAdmin
+      .from("standings")
+      .upsert(standingsRows, { onConflict: "league_id,user_id" });
+    if (standingsErr) errors.push({ stage: "standings", id: league.id, error: standingsErr.message });
+  }
+
+  return NextResponse.json({
+    success: true,
+    live: true,
+    round,
+    nflWeek,
+    sleeperPlayerCount: sleeperEntries.length,
+    sampleSleeperEntries: sampleEntries,
+    playersProcessed: players.length,
+    leaguesProcessed: leagues?.length || 0,
+    errors,
+  });
+}
+
 async function runSync(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
@@ -162,6 +396,13 @@ async function runSync(req: NextRequest) {
     const isCron  = cronSecret === `Bearer ${process.env.CRON_SECRET}`;
     if (!isAdmin && !isCron) {
       return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+    }
+
+    // Live beta mode: skip real-matchup winner/elimination/advancement entirely
+    // and just re-poll + rescore the current round on every call. Everything
+    // below this branch is the untouched real-playoff (January) path.
+    if (new URL(req.url).searchParams.get("live") === "true") {
+      return runLiveSync();
     }
 
     const season = 2026;
