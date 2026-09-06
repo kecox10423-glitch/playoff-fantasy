@@ -391,18 +391,25 @@ async function runSync(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const { userId } = body;
 
-    const cronSecret = req.headers.get("authorization");
+    const authHeader = req.headers.get("authorization");
     const isAdmin = userId === ADMIN_USER_ID;
-    const isCron  = cronSecret === `Bearer ${process.env.CRON_SECRET}`;
-    if (!isAdmin && !isCron) {
-      return NextResponse.json({ error: "Not authorized" }, { status: 403 });
-    }
+    const isCron  = authHeader === `Bearer ${process.env.CRON_SECRET}`;
 
     // Live beta mode: skip real-matchup winner/elimination/advancement entirely
-    // and just re-poll + rescore the current round on every call. Everything
-    // below this branch is the untouched real-playoff (January) path.
+    // and just re-poll + rescore the current round on every call. Gated
+    // separately so LIVE_POLL_TOKEN (handed to the external cron-job.org
+    // scheduler) can only ever reach runLiveSync() — it is never accepted
+    // below for the real-playoff (January) path.
     if (new URL(req.url).searchParams.get("live") === "true") {
+      const isLiveScheduler = authHeader === `Bearer ${process.env.LIVE_POLL_TOKEN}`;
+      if (!isAdmin && !isCron && !isLiveScheduler) {
+        return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+      }
       return runLiveSync();
+    }
+
+    if (!isAdmin && !isCron) {
+      return NextResponse.json({ error: "Not authorized" }, { status: 403 });
     }
 
     const season = 2026;
