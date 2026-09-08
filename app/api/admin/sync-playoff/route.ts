@@ -175,23 +175,19 @@ async function runLiveSync() {
     return NextResponse.json({ error: "No players found" }, { status: 500 });
   }
 
-  const sleeperPlayersRes = await fetch("https://api.sleeper.app/v1/players/nfl");
-  const sleeperPlayersData = await sleeperPlayersRes.json();
-
-  const nameToSleeperId: { [name: string]: string } = {};
-  const normalizedToSleeperId: { [name: string]: string } = {};
-
-  for (const [id, player] of Object.entries(sleeperPlayersData as any)) {
-    const p = player as any;
-    if (p.first_name && p.last_name) {
-      const fullName = `${p.first_name} ${p.last_name}`.toLowerCase();
-      nameToSleeperId[fullName] = id;
-      const normalized = normalizeName(`${p.first_name} ${p.last_name}`);
-      if (!normalizedToSleeperId[normalized]) {
-        normalizedToSleeperId[normalized] = id;
-      }
-    }
-  }
+  // Name-matching against Sleeper is precomputed ahead of time (see
+  // admin/sync-sleeper-ids, which already populates players.sleeper_id and
+  // is also what the headshot feature relies on) and read straight off the
+  // player row below — no re-downloading Sleeper's ~15MB players/nfl list
+  // on every poll. That single fetch was ~7.5s of the ~8s total runtime;
+  // the live poller must never touch it. If a non-DST player is missing
+  // sleeper_id, its stats are silently skipped here (same as an unmatched
+  // name would have been before) — rerun sync-sleeper-ids to fill it in.
+  const { data: nflTeams } = await supabaseAdmin
+    .from("nfl_teams")
+    .select("id, abbreviation")
+    .eq("season", season);
+  const teamAbbrById = new Map((nflTeams || []).map(t => [t.id, t.abbreviation]));
 
   const dstTeamMap: { [abbr: string]: string } = {
     BAL: "BAL", BUF: "BUF", LAC: "LAC", NE: "NE",
@@ -227,23 +223,11 @@ async function runLiveSync() {
     let rawStats: any = null;
 
     if (player.position === "DST") {
-      const { data: teamData } = await supabaseAdmin
-        .from("nfl_teams")
-        .select("abbreviation")
-        .eq("id", player.nfl_team_id)
-        .single();
-      const abbr = teamData?.abbreviation;
+      const abbr = teamAbbrById.get(player.nfl_team_id);
       const sleeperId = abbr ? dstTeamMap[abbr] : null;
       rawStats = sleeperId ? sleeperWeekData[sleeperId] : null;
     } else {
-      const nameLower = player.name.toLowerCase();
-      let sleeperId = SLEEPER_ID_OVERRIDES[nameLower];
-      if (!sleeperId) sleeperId = nameToSleeperId[nameLower];
-      if (!sleeperId) {
-        const normalized = normalizeName(player.name);
-        sleeperId = normalizedToSleeperId[normalized];
-      }
-      rawStats = sleeperId ? sleeperWeekData[sleeperId] : null;
+      rawStats = player.sleeper_id ? sleeperWeekData[player.sleeper_id] : null;
     }
 
     const stats = rawStats ? {
