@@ -219,7 +219,7 @@ async function runLiveSync() {
   );
   console.log(`[live-sync] sample:`, JSON.stringify(sampleEntries));
 
-  for (const player of players) {
+  const playerStatRows = players.map(player => {
     let rawStats: any = null;
 
     if (player.position === "DST") {
@@ -259,19 +259,21 @@ async function runLiveSync() {
       fumbles_lost:       rawStats.fum_lost  || 0,
     } : null;
 
-    const { error: upsertErr } = await supabaseAdmin
-      .from("player_stats")
-      .upsert({
-        player_id: player.id,
-        season,
-        week: dbWeek,
-        ...(stats || {}),
-        fantasy_points: 0,
-      }, { onConflict: "player_id,season,week" });
+    return {
+      player_id: player.id,
+      season,
+      week: dbWeek,
+      ...(stats || {}),
+      fantasy_points: 0,
+    };
+  });
 
-    if (upsertErr) {
-      errors.push({ stage: "player_stats", id: player.id, error: upsertErr.message });
-    }
+  const { error: statsUpsertErr } = await supabaseAdmin
+    .from("player_stats")
+    .upsert(playerStatRows, { onConflict: "player_id,season,week" });
+
+  if (statsUpsertErr) {
+    errors.push({ stage: "player_stats", error: statsUpsertErr.message });
   }
 
   // ── Batch-recalc scores + standings from current player_stats ───────────
