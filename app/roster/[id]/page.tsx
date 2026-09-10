@@ -1,8 +1,9 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import Nav from "../../components/Nav";
+import { getSettings, calcPlayerPoints } from "../../lib/scoring";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -108,7 +109,8 @@ const POSITION_GROUPS = [
       { header: "INT", fn: (s: any) => fmt(s?.interceptions) },
       { header: "RYDS", fn: (s: any) => fmt(s?.rush_yards) },
       { header: "RTD", fn: (s: any) => fmt(s?.rush_tds) },
-      { header: "FPTS", fn: (s: any) => fmt(s?.fantasy_points, 1), highlight: true },
+      { header: "FPTS", fn: (s: any, position: string, settings: any, isSeasonTab: boolean) =>
+        fmt(isSeasonTab ? s?.fantasy_points : (s ? calcPlayerPoints(s, position, settings) : null), 1), highlight: true },
     ],
   },
   {
@@ -121,7 +123,8 @@ const POSITION_GROUPS = [
       { header: "RECYDS", fn: (s: any) => fmt(s?.rec_yards) },
       { header: "RECTD", fn: (s: any) => fmt(s?.rec_tds) },
       { header: "", fn: () => "" },
-      { header: "FPTS", fn: (s: any) => fmt(s?.fantasy_points, 1), highlight: true },
+      { header: "FPTS", fn: (s: any, position: string, settings: any, isSeasonTab: boolean) =>
+        fmt(isSeasonTab ? s?.fantasy_points : (s ? calcPlayerPoints(s, position, settings) : null), 1), highlight: true },
     ],
   },
   {
@@ -134,7 +137,8 @@ const POSITION_GROUPS = [
       { header: "RTD", fn: (s: any) => fmt(s?.rush_tds) },
       { header: "", fn: () => "" },
       { header: "", fn: () => "" },
-      { header: "FPTS", fn: (s: any) => fmt(s?.fantasy_points, 1), highlight: true },
+      { header: "FPTS", fn: (s: any, position: string, settings: any, isSeasonTab: boolean) =>
+        fmt(isSeasonTab ? s?.fantasy_points : (s ? calcPlayerPoints(s, position, settings) : null), 1), highlight: true },
     ],
   },
   {
@@ -147,7 +151,8 @@ const POSITION_GROUPS = [
       { header: "", fn: () => "" },
       { header: "", fn: () => "" },
       { header: "", fn: () => "" },
-      { header: "FPTS", fn: (s: any) => fmt(s?.fantasy_points, 1), highlight: true },
+      { header: "FPTS", fn: (s: any, position: string, settings: any, isSeasonTab: boolean) =>
+        fmt(isSeasonTab ? s?.fantasy_points : (s ? calcPlayerPoints(s, position, settings) : null), 1), highlight: true },
     ],
   },
   {
@@ -160,7 +165,8 @@ const POSITION_GROUPS = [
       { header: "50+", fn: (s: any) => fmt(s?.fg_50_plus) },
       { header: "XPM", fn: (s: any) => fmt(s?.xp_made) },
       { header: "XPA", fn: (s: any) => fmt(s?.pat_attempts) },
-      { header: "FPTS", fn: (s: any) => fmt(s?.fantasy_points, 1), highlight: true },
+      { header: "FPTS", fn: (s: any, position: string, settings: any, isSeasonTab: boolean) =>
+        fmt(isSeasonTab ? s?.fantasy_points : (s ? calcPlayerPoints(s, position, settings) : null), 1), highlight: true },
     ],
   },
   {
@@ -173,7 +179,8 @@ const POSITION_GROUPS = [
       { header: "TK", fn: (s: any) => fmt(s?.dst_tackles) },
       { header: "PA", fn: (s: any) => fmt(s?.dst_points_allowed) },
       { header: "", fn: () => "" },
-      { header: "FPTS", fn: (s: any) => fmt(s?.fantasy_points, 1), highlight: true },
+      { header: "FPTS", fn: (s: any, position: string, settings: any, isSeasonTab: boolean) =>
+        fmt(isSeasonTab ? s?.fantasy_points : (s ? calcPlayerPoints(s, position, settings) : null), 1), highlight: true },
     ],
   },
 ];
@@ -246,6 +253,8 @@ export default function RosterPage() {
       .filter(Boolean);
   }
 
+  const scoringSettings = useMemo(() => getSettings(league || {}), [league]);
+
   function getStats(playerId: number, week: number | null) {
     if (week === null) {
       return allStats.find(s => s.player_id === playerId && s.week === 0) || null;
@@ -253,16 +262,16 @@ export default function RosterPage() {
     return allStats.find(s => s.player_id === playerId && s.week === week) || null;
   }
 
-  function getPlayerSeasonTotal(playerId: number) {
+  function getPlayerSeasonTotal(playerId: number, position: string) {
     const weekStats = allStats.filter(s => s.player_id === playerId && s.week >= 1 && s.week <= 4);
     if (weekStats.length === 0) return null;
-    return weekStats.reduce((sum, s) => sum + (parseFloat(s.fantasy_points) || 0), 0);
+    return weekStats.reduce((sum, s) => sum + calcPlayerPoints(s, position, scoringSettings), 0);
   }
 
   function getTeamTotal(userId: string) {
     const roster = getRosterForUser(userId);
     return roster.reduce((sum: number, p: any) => {
-      const t = getPlayerSeasonTotal(p.id);
+      const t = getPlayerSeasonTotal(p.id, p.position);
       return sum + (t || 0);
     }, 0);
   }
@@ -290,7 +299,15 @@ export default function RosterPage() {
     return oppTeam?.abbreviation ? `vs ${oppTeam.abbreviation}` : "TBD";
   }
 
-  const hasPlayoffStats = allStats.some(s => s.week >= 1 && s.week <= 4 && parseFloat(s.fantasy_points || "0") > 0);
+  const hasPlayoffStats = allStats.some(s =>
+    s.week >= 1 && s.week <= 4 && (
+      s.pass_yards || s.pass_tds || s.interceptions ||
+      s.rush_yards || s.rush_tds ||
+      s.receptions || s.rec_yards || s.rec_tds ||
+      s.fg_made || s.xp_made ||
+      s.dst_sacks || s.dst_ints || s.dst_fumbles_rec || s.dst_tds || s.dst_safety
+    )
+  );
 
   if (loading) return (
     <main className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
@@ -427,7 +444,7 @@ export default function RosterPage() {
                         const stats = getStats(player.id, weekOrNull);
                         const isEliminated = player.is_active === false;
                         const opp = getOpp(player);
-                        const fpts = group.cols.find(c => (c as any).highlight)?.fn(stats) || "—";
+                        const fpts = group.cols.find(c => (c as any).highlight)?.fn(stats, player.position, scoringSettings, isSeasonTab) || "—";
                         return (
                           <div
                             key={player.id}
@@ -517,7 +534,7 @@ export default function RosterPage() {
                                   {opp}
                                 </span>
                                 {group.cols.map((col, i) => {
-                                  const val = col.fn(stats);
+                                  const val = col.fn(stats, player.position, scoringSettings, isSeasonTab);
                                   return (
                                     <span key={i} className={`text-right text-sm font-mono tabular-nums ${
                                       (col as any).highlight
