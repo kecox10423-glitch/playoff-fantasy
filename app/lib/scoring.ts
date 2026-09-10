@@ -47,13 +47,23 @@ export function calcPlayerPoints(stats: any, position: string, s: any): number {
   if (!stats) return 0;
 
   if (position === "DST") {
+    // dst_points_allowed (and every other dst_* field) is written as one
+    // atomic object only when the team has actual game data this week (see
+    // runLiveSync) - a bye or a game that hasn't kicked off leaves it SQL
+    // NULL, not 0. Gate on that null-ness, not just the shutout bonus: a
+    // team with no game data should score 0 across the board, not just skip
+    // the bonus (other dst_* fields would already be 0 here too, but this
+    // makes "hasn't played" an explicit early return rather than relying on
+    // every term happening to zero out the same way).
+    if (stats.dst_points_allowed == null) return 0;
+
     let pts = 0;
     pts += (stats.dst_sacks || 0) * s.dst_sack;
     pts += (stats.dst_ints || 0) * s.dst_interception;
     pts += (stats.dst_fumbles_rec || 0) * s.dst_fumble_recovery;
     pts += (stats.dst_tds || 0) * s.dst_td;
     pts += (stats.dst_safety || 0) * s.dst_safety;
-    const pa = stats.dst_points_allowed || 0;
+    const pa = stats.dst_points_allowed;
     if (pa === 0)      pts += s.dst_pa_0;
     else if (pa <= 6)  pts += s.dst_pa_1_6;
     else if (pa <= 13) pts += s.dst_pa_7_13;
