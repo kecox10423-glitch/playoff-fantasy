@@ -109,8 +109,8 @@ const POSITION_GROUPS = [
       { header: "INT", fn: (s: any) => fmt(s?.interceptions) },
       { header: "RYDS", fn: (s: any) => fmt(s?.rush_yards) },
       { header: "RTD", fn: (s: any) => fmt(s?.rush_tds) },
-      { header: "FPTS", fn: (s: any, position: string, settings: any, isSeasonTab: boolean) =>
-        fmt(isSeasonTab ? s?.fantasy_points : (s ? calcPlayerPoints(s, position, settings) : null), 1), highlight: true },
+      { header: "FPTS", fn: (s: any, position: string, settings: any, isSeasonTab: boolean, isByeThisRound: boolean) =>
+        fmt(isSeasonTab ? s?.fantasy_points : (s ? calcPlayerPoints(s, position, settings, isByeThisRound) : null), 1), highlight: true },
     ],
   },
   {
@@ -123,8 +123,8 @@ const POSITION_GROUPS = [
       { header: "RECYDS", fn: (s: any) => fmt(s?.rec_yards) },
       { header: "RECTD", fn: (s: any) => fmt(s?.rec_tds) },
       { header: "", fn: () => "" },
-      { header: "FPTS", fn: (s: any, position: string, settings: any, isSeasonTab: boolean) =>
-        fmt(isSeasonTab ? s?.fantasy_points : (s ? calcPlayerPoints(s, position, settings) : null), 1), highlight: true },
+      { header: "FPTS", fn: (s: any, position: string, settings: any, isSeasonTab: boolean, isByeThisRound: boolean) =>
+        fmt(isSeasonTab ? s?.fantasy_points : (s ? calcPlayerPoints(s, position, settings, isByeThisRound) : null), 1), highlight: true },
     ],
   },
   {
@@ -137,8 +137,8 @@ const POSITION_GROUPS = [
       { header: "RTD", fn: (s: any) => fmt(s?.rush_tds) },
       { header: "", fn: () => "" },
       { header: "", fn: () => "" },
-      { header: "FPTS", fn: (s: any, position: string, settings: any, isSeasonTab: boolean) =>
-        fmt(isSeasonTab ? s?.fantasy_points : (s ? calcPlayerPoints(s, position, settings) : null), 1), highlight: true },
+      { header: "FPTS", fn: (s: any, position: string, settings: any, isSeasonTab: boolean, isByeThisRound: boolean) =>
+        fmt(isSeasonTab ? s?.fantasy_points : (s ? calcPlayerPoints(s, position, settings, isByeThisRound) : null), 1), highlight: true },
     ],
   },
   {
@@ -151,8 +151,8 @@ const POSITION_GROUPS = [
       { header: "", fn: () => "" },
       { header: "", fn: () => "" },
       { header: "", fn: () => "" },
-      { header: "FPTS", fn: (s: any, position: string, settings: any, isSeasonTab: boolean) =>
-        fmt(isSeasonTab ? s?.fantasy_points : (s ? calcPlayerPoints(s, position, settings) : null), 1), highlight: true },
+      { header: "FPTS", fn: (s: any, position: string, settings: any, isSeasonTab: boolean, isByeThisRound: boolean) =>
+        fmt(isSeasonTab ? s?.fantasy_points : (s ? calcPlayerPoints(s, position, settings, isByeThisRound) : null), 1), highlight: true },
     ],
   },
   {
@@ -165,8 +165,8 @@ const POSITION_GROUPS = [
       { header: "50+", fn: (s: any) => fmt(s?.fg_50_plus) },
       { header: "XPM", fn: (s: any) => fmt(s?.xp_made) },
       { header: "XPA", fn: (s: any) => fmt(s?.pat_attempts) },
-      { header: "FPTS", fn: (s: any, position: string, settings: any, isSeasonTab: boolean) =>
-        fmt(isSeasonTab ? s?.fantasy_points : (s ? calcPlayerPoints(s, position, settings) : null), 1), highlight: true },
+      { header: "FPTS", fn: (s: any, position: string, settings: any, isSeasonTab: boolean, isByeThisRound: boolean) =>
+        fmt(isSeasonTab ? s?.fantasy_points : (s ? calcPlayerPoints(s, position, settings, isByeThisRound) : null), 1), highlight: true },
     ],
   },
   {
@@ -179,8 +179,8 @@ const POSITION_GROUPS = [
       { header: "TK", fn: (s: any) => fmt(s?.dst_tackles) },
       { header: "PA", fn: (s: any) => fmt(s?.dst_points_allowed) },
       { header: "", fn: () => "" },
-      { header: "FPTS", fn: (s: any, position: string, settings: any, isSeasonTab: boolean) =>
-        fmt(isSeasonTab ? s?.fantasy_points : (s ? calcPlayerPoints(s, position, settings) : null), 1), highlight: true },
+      { header: "FPTS", fn: (s: any, position: string, settings: any, isSeasonTab: boolean, isByeThisRound: boolean) =>
+        fmt(isSeasonTab ? s?.fantasy_points : (s ? calcPlayerPoints(s, position, settings, isByeThisRound) : null), 1), highlight: true },
     ],
   },
 ];
@@ -262,16 +262,19 @@ export default function RosterPage() {
     return allStats.find(s => s.player_id === playerId && s.week === week) || null;
   }
 
-  function getPlayerSeasonTotal(playerId: number, position: string) {
+  function getPlayerSeasonTotal(playerId: number, position: string, seed: number | undefined) {
     const weekStats = allStats.filter(s => s.player_id === playerId && s.week >= 1 && s.week <= 4);
     if (weekStats.length === 0) return null;
-    return weekStats.reduce((sum, s) => sum + calcPlayerPoints(s, position, scoringSettings), 0);
+    return weekStats.reduce((sum, s) => {
+      const isByeThisRound = seed === 1 && s.week === 1;
+      return sum + calcPlayerPoints(s, position, scoringSettings, isByeThisRound);
+    }, 0);
   }
 
   function getTeamTotal(userId: string) {
     const roster = getRosterForUser(userId);
     return roster.reduce((sum: number, p: any) => {
-      const t = getPlayerSeasonTotal(p.id, p.position);
+      const t = getPlayerSeasonTotal(p.id, p.position, p.nfl_teams?.seed);
       return sum + (t || 0);
     }, 0);
   }
@@ -444,7 +447,8 @@ export default function RosterPage() {
                         const stats = getStats(player.id, weekOrNull);
                         const isEliminated = player.is_active === false;
                         const opp = getOpp(player);
-                        const fpts = group.cols.find(c => (c as any).highlight)?.fn(stats, player.position, scoringSettings, isSeasonTab) || "—";
+                        const isByeThisRound = player.nfl_teams?.seed === 1 && weekOrNull === 1;
+                        const fpts = group.cols.find(c => (c as any).highlight)?.fn(stats, player.position, scoringSettings, isSeasonTab, isByeThisRound) || "—";
                         return (
                           <div
                             key={player.id}
@@ -508,6 +512,7 @@ export default function RosterPage() {
                             const stats = getStats(player.id, weekOrNull);
                             const isEliminated = player.is_active === false;
                             const opp = getOpp(player);
+                            const isByeThisRound = player.nfl_teams?.seed === 1 && weekOrNull === 1;
                             return (
                               <div
                                 key={player.id}
@@ -534,7 +539,7 @@ export default function RosterPage() {
                                   {opp}
                                 </span>
                                 {group.cols.map((col, i) => {
-                                  const val = col.fn(stats, player.position, scoringSettings, isSeasonTab);
+                                  const val = col.fn(stats, player.position, scoringSettings, isSeasonTab, isByeThisRound);
                                   return (
                                     <span key={i} className={`text-right text-sm font-mono tabular-nums ${
                                       (col as any).highlight

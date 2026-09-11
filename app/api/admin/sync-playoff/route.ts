@@ -93,9 +93,10 @@ async function runLiveSync() {
   // name would have been before) — rerun sync-sleeper-ids to fill it in.
   const { data: nflTeams } = await supabaseAdmin
     .from("nfl_teams")
-    .select("id, abbreviation")
+    .select("id, abbreviation, seed")
     .eq("season", season);
   const teamAbbrById = new Map((nflTeams || []).map(t => [t.id, t.abbreviation]));
+  const seedByTeamId = new Map((nflTeams || []).map(t => [t.id, t.seed]));
 
   const dstTeamMap: { [abbr: string]: string } = {
     BAL: "BAL", BUF: "BUF", LAC: "LAC", NE: "NE",
@@ -224,7 +225,8 @@ async function runLiveSync() {
         const player = playersById.get(pick.player_id);
         if (!player || player.is_active === false) continue;
         activePlayers++;
-        weekTotal += calcPlayerPoints(statsByPlayerId.get(pick.player_id), player.position, scoringSettings);
+        const isByeThisRound = seedByTeamId.get(player.nfl_team_id) === 1 && dbWeek === 1;
+        weekTotal += calcPlayerPoints(statsByPlayerId.get(pick.player_id), player.position, scoringSettings, isByeThisRound);
       }
 
       return {

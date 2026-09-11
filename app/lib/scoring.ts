@@ -43,7 +43,12 @@ export function getSettings(league: any) {
   return { ...DEFAULT_SETTINGS, ...(league.scoring_settings || {}) };
 }
 
-export function calcPlayerPoints(stats: any, position: string, s: any): number {
+export function calcPlayerPoints(stats: any, position: string, s: any, isByeThisRound: boolean = false): number {
+  // A team on a Wild Card bye (seed 1) scores 0 for week 1 regardless of
+  // real stats - real NFL Week 1 has no byes, but the mock bracket's WC
+  // round does, and a bye team's players shouldn't score off their real
+  // game while their fictional bracket team sits it out.
+  if (isByeThisRound) return 0;
   if (!stats) return 0;
 
   if (position === "DST") {
