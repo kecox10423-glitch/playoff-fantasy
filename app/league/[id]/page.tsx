@@ -71,7 +71,7 @@ function BracketView({ games, teams }: { games: any[]; teams: any[] }) {
     const away = getTeam(game.away_team_id);
     const winner = game.winner_team_id;
 
-    function TeamRow({ team, isWinner }: { team: any; isWinner: boolean }) {
+    function TeamRow({ team, isWinner, score }: { team: any; isWinner: boolean; score: number | null | undefined }) {
       if (!team) return (
         <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-700">
           <span className="text-gray-600 text-xs w-5 text-center">—</span>
@@ -86,6 +86,9 @@ function BracketView({ games, teams }: { games: any[]; teams: any[] }) {
           <span className={`text-sm font-bold flex-1 ${isWinner ? "text-green-400" : "text-white"}`}>
             {team.abbreviation}
           </span>
+          <span className={`text-sm font-mono tabular-nums ${isWinner ? "text-green-400 font-bold" : "text-gray-300"}`}>
+            {score != null ? score : "—"}
+          </span>
           {isWinner && <span className="text-green-400 text-xs">✓</span>}
           {team.is_eliminated && !isWinner && <span className="text-red-500 text-xs">✕</span>}
         </div>
@@ -94,8 +97,8 @@ function BracketView({ games, teams }: { games: any[]; teams: any[] }) {
 
     return (
       <div className="bg-gray-800 rounded-lg overflow-hidden border border-gray-700 w-44 flex-shrink-0">
-        <TeamRow team={home} isWinner={winner === game.home_team_id} />
-        <TeamRow team={away} isWinner={winner === game.away_team_id} />
+        <TeamRow team={home} isWinner={winner === game.home_team_id} score={game.home_score} />
+        <TeamRow team={away} isWinner={winner === game.away_team_id} score={game.away_score} />
         {game.game_time && (
           <div className="px-3 py-1 bg-gray-900">
             <p className="text-xs text-gray-600">{game.game_time}</p>
