@@ -346,14 +346,22 @@ async function runLiveSync() {
           })
           .filter(g => "home_score" in g || "away_score" in g);
 
-        if (scoreUpdates.length) {
-          const { error: scoresUpdateErr } = await supabaseAdmin
+        // These rows always already exist (ids came from the SELECT above),
+        // so this is a plain per-row UPDATE, not an upsert - upsert's
+        // INSERT ... ON CONFLICT form still validates NOT NULL constraints
+        // (conference, round, etc.) on the hypothetical insert row even
+        // when it's guaranteed to hit the conflict branch, which fails here
+        // since these partial objects only carry id + the score fields.
+        // Only 6 rows max, so no batching needed.
+        for (const { id, ...fields } of scoreUpdates) {
+          const { error: scoreUpdateErr } = await supabaseAdmin
             .from("playoff_games")
-            .upsert(scoreUpdates, { onConflict: "id" });
-          if (scoresUpdateErr) {
-            errors.push({ stage: "playoff_game_scores", error: scoresUpdateErr.message });
+            .update(fields)
+            .eq("id", id);
+          if (scoreUpdateErr) {
+            errors.push({ stage: "playoff_game_scores", id, error: scoreUpdateErr.message });
           } else {
-            scoresUpdated = scoreUpdates.length;
+            scoresUpdated++;
           }
         }
       }
