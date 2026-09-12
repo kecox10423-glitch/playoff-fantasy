@@ -60,6 +60,22 @@ function buildFloatingMatchups(
   ];
 }
 
+// Confirmed via Vercel logs: sync-playoff's "No players found" 500 is an
+// intermittent, self-recovering transient blip on this query, not a real
+// empty table (the 126-row 2026 player pool is static during the beta -
+// nothing deletes/recreates it). The original guard didn't even destructure
+// Supabase's `error`, so a failed query and a genuinely empty one looked
+// identical and left zero trace in the logs. This retries once, logs the
+// real error (or the empty-result case) either way, and only gives up
+// after both attempts fail.
+async function fetchPlayers(season: number) {
+  const { data, error } = await supabaseAdmin
+    .from("players")
+    .select("*")
+    .eq("season", season);
+  return { data, error };
+}
+
 // ── Live beta poller ──────────────────────────────────────────────────────
 // Scoped to the WC round only (real NFL Week 1, standing in for the mock
 // bracket's opening round during the Sept 9 beta). No completeness gate:
@@ -74,13 +90,23 @@ async function runLiveSync() {
 
   const errors: { stage: string; id?: number | string; error: string }[] = [];
 
-  const { data: players } = await supabaseAdmin
-    .from("players")
-    .select("*")
-    .eq("season", season);
+  let { data: players, error: playersError } = await fetchPlayers(season);
 
-  if (!players?.length) {
-    return NextResponse.json({ error: "No players found" }, { status: 500 });
+  if (playersError || !players?.length) {
+    console.error(
+      `[live-sync] players query empty/errored on first attempt` +
+      (playersError ? ` - error: ${playersError.message}` : " - 0 rows, no error") +
+      ` - retrying once`
+    );
+    ({ data: players, error: playersError } = await fetchPlayers(season));
+  }
+
+  if (playersError || !players?.length) {
+    const reason = playersError
+      ? `players query errored twice: ${playersError.message}`
+      : "players query returned 0 rows twice";
+    console.error(`[live-sync] ${reason} - skipping this poll, next one in ~1-2 min will retry`);
+    return NextResponse.json({ success: true, skipped: true, reason }, { status: 200 });
   }
 
   // Name-matching against Sleeper is precomputed ahead of time (see
