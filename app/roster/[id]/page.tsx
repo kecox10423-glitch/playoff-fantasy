@@ -94,6 +94,80 @@ function fmt(val: any, decimals = 0): string {
   return decimals > 0 ? n.toFixed(decimals) : String(Math.round(n));
 }
 
+// Raw, position-appropriate scorable stats for the tap-to-expand breakdown.
+// Deliberately a smaller set than the desktop table's columns (e.g. no
+// CMP/ATT for QB, no CAR for RB) - just the stats that actually matter,
+// no point values, no total (that's already on the collapsed line).
+function getStatBreakdown(position: string, stats: any): { label: string; value: string }[] {
+  if (!stats) return [];
+  switch (position) {
+    case "QB":
+      return [
+        { label: "Pass Yds", value: fmt(stats.pass_yards) },
+        { label: "Pass TD", value: fmt(stats.pass_tds) },
+        { label: "INT", value: fmt(stats.interceptions) },
+        { label: "Rush Yds", value: fmt(stats.rush_yards) },
+      ];
+    case "RB":
+      return [
+        { label: "Rush Yds", value: fmt(stats.rush_yards) },
+        { label: "Rush TD", value: fmt(stats.rush_tds) },
+        { label: "Rec", value: fmt(stats.receptions) },
+        { label: "Rec Yds", value: fmt(stats.rec_yards) },
+        { label: "Rec TD", value: fmt(stats.rec_tds) },
+      ];
+    case "WR":
+    case "TE":
+      return [
+        { label: "Rec", value: fmt(stats.receptions) },
+        { label: "Rec Yds", value: fmt(stats.rec_yards) },
+        { label: "Rec TD", value: fmt(stats.rec_tds) },
+      ];
+    case "K":
+      return [
+        { label: "FG", value: fmt(stats.fg_made) },
+        { label: "XP", value: fmt(stats.xp_made) },
+      ];
+    case "DST":
+      return [
+        { label: "Sacks", value: fmt(stats.dst_sacks) },
+        { label: "INT", value: fmt(stats.dst_ints) },
+        { label: "FR", value: fmt(stats.dst_fumbles_rec) },
+        { label: "TD", value: fmt(stats.dst_tds) },
+        { label: "PA", value: fmt(stats.dst_points_allowed) },
+      ];
+    default:
+      return [];
+  }
+}
+
+function Chevron({ expanded }: { expanded: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      className={`w-4 h-4 flex-shrink-0 text-gray-500 transition-transform duration-150 ${expanded ? "rotate-180" : ""}`}
+    >
+      <path d="M5 7.5L10 12.5L15 7.5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function StatBreakdown({ position, stats }: { position: string; stats: any }) {
+  const items = getStatBreakdown(position, stats);
+  if (items.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-x-6 gap-y-2 px-4 py-3 bg-gray-950/60 border-t border-gray-800">
+      {items.map(item => (
+        <div key={item.label} className="flex flex-col items-start">
+          <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">{item.label}</span>
+          <span className="text-sm font-mono tabular-nums text-gray-200">{item.value}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 const MAX_STAT_COLS = 8;
 const STAT_COL_WIDTH = "4rem";
 const GRID_COLS = `3rem 2.5rem 13rem 6rem ${Array(MAX_STAT_COLS).fill(STAT_COL_WIDTH).join(" ")}`;
@@ -201,6 +275,7 @@ export default function RosterPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"playoff" | "season">("season");
   const [selectedWeek, setSelectedWeek] = useState<number>(1);
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const router = useRouter();
   const params = useParams();
   const searchParams = useSearchParams();
@@ -241,6 +316,14 @@ export default function RosterPage() {
     }
     load();
   }, []);
+
+  function toggleExpanded(playerId: number) {
+    setExpandedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(playerId)) next.delete(playerId); else next.add(playerId);
+      return next;
+    });
+  }
 
   function getRosterForUser(userId: string) {
     return picks
@@ -449,28 +532,34 @@ export default function RosterPage() {
                         const opp = getOpp(player);
                         const isByeThisRound = player.nfl_teams?.seed === 1 && weekOrNull === 1;
                         const fpts = group.cols.find(c => (c as any).highlight)?.fn(stats, player.position, scoringSettings, isSeasonTab, isByeThisRound) || "—";
+                        const isExpanded = expandedIds.has(player.id);
                         return (
                           <div
                             key={player.id}
-                            className={`bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 mb-2 flex items-center gap-3 ${isEliminated ? "opacity-50" : ""}`}
+                            onClick={() => toggleExpanded(player.id)}
+                            className={`bg-gray-900 border border-gray-800 rounded-xl mb-2 cursor-pointer ${isEliminated ? "opacity-50" : ""}`}
                           >
-                            <PlayerAvatar
-                              name={player.name}
-                              position={player.position}
-                              sleeperId={player.sleeper_id}
-                              teamAbbr={player.nfl_teams?.abbreviation}
-                            />
-                            <div className="flex-1 min-w-0">
-                              <p className={`font-bold text-sm ${isEliminated ? "line-through text-gray-500" : "text-white"}`}>
-                                {player.name}
-                                {isEliminated && <span className="ml-2 text-xs bg-red-900 text-red-400 px-1.5 py-0.5 rounded">ELIM</span>}
-                              </p>
-                              <p className="text-xs text-gray-500">{player.nfl_teams?.abbreviation} · Seed {player.nfl_teams?.seed}</p>
+                            <div className="px-4 py-3 flex items-center gap-3">
+                              <PlayerAvatar
+                                name={player.name}
+                                position={player.position}
+                                sleeperId={player.sleeper_id}
+                                teamAbbr={player.nfl_teams?.abbreviation}
+                              />
+                              <div className="flex-1 min-w-0">
+                                <p className={`font-bold text-sm ${isEliminated ? "line-through text-gray-500" : "text-white"}`}>
+                                  {player.name}
+                                  {isEliminated && <span className="ml-2 text-xs bg-red-900 text-red-400 px-1.5 py-0.5 rounded">ELIM</span>}
+                                </p>
+                                <p className="text-xs text-gray-500">{player.nfl_teams?.abbreviation} · Seed {player.nfl_teams?.seed}</p>
+                              </div>
+                              <div className="text-right flex-shrink-0">
+                                <p className={`text-sm font-bold ${fpts === "—" ? "text-gray-600" : "text-green-400"}`}>{fpts} pts</p>
+                                <p className={`text-xs ${opp === "OUT" ? "text-red-400" : opp === "BYE" ? "text-blue-400" : "text-gray-400"}`}>{opp}</p>
+                              </div>
+                              <Chevron expanded={isExpanded} />
                             </div>
-                            <div className="text-right flex-shrink-0">
-                              <p className={`text-sm font-bold ${fpts === "—" ? "text-gray-600" : "text-green-400"}`}>{fpts} pts</p>
-                              <p className={`text-xs ${opp === "OUT" ? "text-red-400" : opp === "BYE" ? "text-blue-400" : "text-gray-400"}`}>{opp}</p>
-                            </div>
+                            {isExpanded && <StatBreakdown position={player.position} stats={stats} />}
                           </div>
                         );
                       })}
@@ -513,41 +602,48 @@ export default function RosterPage() {
                             const isEliminated = player.is_active === false;
                             const opp = getOpp(player);
                             const isByeThisRound = player.nfl_teams?.seed === 1 && weekOrNull === 1;
+                            const isExpanded = expandedIds.has(player.id);
                             return (
-                              <div
-                                key={player.id}
-                                className={`grid px-4 py-3 border-b border-gray-800 hover:bg-gray-900 transition-colors items-center ${isEliminated ? "opacity-40" : ""}`}
-                                style={{ gridTemplateColumns: GRID_COLS }}
-                              >
-                                <span className={`text-xs font-black px-1.5 py-0.5 rounded text-center w-fit ${getPositionBadge(player.position)}`}>
-                                  {player.position}
-                                </span>
-                                <PlayerAvatar
-                                  name={player.name}
-                                  position={player.position}
-                                  sleeperId={player.sleeper_id}
-                                  teamAbbr={player.nfl_teams?.abbreviation}
-                                />
-                                <div className="min-w-0 pr-2">
-                                  <div className="flex items-center gap-2">
-                                    <p className={`font-bold text-sm truncate ${isEliminated ? "line-through text-gray-500" : "text-white"}`}>{player.name}</p>
-                                    {isEliminated && <span className="text-xs bg-red-900 text-red-400 px-1.5 py-0.5 rounded flex-shrink-0">ELIM</span>}
+                              <div key={player.id} className="relative">
+                                <div
+                                  onClick={() => toggleExpanded(player.id)}
+                                  className={`grid px-4 py-3 border-b border-gray-800 hover:bg-gray-900 transition-colors items-center cursor-pointer ${isEliminated ? "opacity-40" : ""}`}
+                                  style={{ gridTemplateColumns: GRID_COLS }}
+                                >
+                                  <span className={`text-xs font-black px-1.5 py-0.5 rounded text-center w-fit ${getPositionBadge(player.position)}`}>
+                                    {player.position}
+                                  </span>
+                                  <PlayerAvatar
+                                    name={player.name}
+                                    position={player.position}
+                                    sleeperId={player.sleeper_id}
+                                    teamAbbr={player.nfl_teams?.abbreviation}
+                                  />
+                                  <div className="min-w-0 pr-2">
+                                    <div className="flex items-center gap-2">
+                                      <p className={`font-bold text-sm truncate ${isEliminated ? "line-through text-gray-500" : "text-white"}`}>{player.name}</p>
+                                      {isEliminated && <span className="text-xs bg-red-900 text-red-400 px-1.5 py-0.5 rounded flex-shrink-0">ELIM</span>}
+                                    </div>
+                                    <p className="text-xs text-gray-500">{player.nfl_teams?.abbreviation} · Seed {player.nfl_teams?.seed}</p>
                                   </div>
-                                  <p className="text-xs text-gray-500">{player.nfl_teams?.abbreviation} · Seed {player.nfl_teams?.seed}</p>
+                                  <span className={`text-xs font-bold whitespace-nowrap ${opp === "OUT" ? "text-red-500" : opp === "BYE" ? "text-blue-400" : "text-gray-300"}`}>
+                                    {opp}
+                                  </span>
+                                  {group.cols.map((col, i) => {
+                                    const val = col.fn(stats, player.position, scoringSettings, isSeasonTab, isByeThisRound);
+                                    return (
+                                      <span key={i} className={`text-right text-sm font-mono tabular-nums ${
+                                        (col as any).highlight
+                                          ? val === "—" || val === "" ? "text-gray-600" : "text-green-400 font-bold"
+                                          : val === "—" || val === "" ? "text-gray-600" : "text-gray-200"
+                                      }`}>{val === "" ? "" : val}</span>
+                                    );
+                                  })}
                                 </div>
-                                <span className={`text-xs font-bold whitespace-nowrap ${opp === "OUT" ? "text-red-500" : opp === "BYE" ? "text-blue-400" : "text-gray-300"}`}>
-                                  {opp}
-                                </span>
-                                {group.cols.map((col, i) => {
-                                  const val = col.fn(stats, player.position, scoringSettings, isSeasonTab, isByeThisRound);
-                                  return (
-                                    <span key={i} className={`text-right text-sm font-mono tabular-nums ${
-                                      (col as any).highlight
-                                        ? val === "—" || val === "" ? "text-gray-600" : "text-green-400 font-bold"
-                                        : val === "—" || val === "" ? "text-gray-600" : "text-gray-200"
-                                    }`}>{val === "" ? "" : val}</span>
-                                  );
-                                })}
+                                <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
+                                  <Chevron expanded={isExpanded} />
+                                </div>
+                                {isExpanded && <StatBreakdown position={player.position} stats={stats} />}
                               </div>
                             );
                           })}
