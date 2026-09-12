@@ -295,6 +295,73 @@ async function runLiveSync() {
     if (standingsErr) errors.push({ stage: "standings", id: league.id, error: standingsErr.message });
   }
 
+  // ── Persist real ESPN scores onto the WC round's bracket games ──────────
+  // Live, every poll, regardless of finality - this is display-only for now
+  // (winner determination is a separate, later piece). Each bracket team's
+  // score comes from THEIR OWN real NFL game this week, not from the two
+  // teams playing each other (the WC pairings here are fictional).
+  let scoresUpdated = 0;
+  const { data: wcGames } = await supabaseAdmin
+    .from("playoff_games")
+    .select("id, home_team_id, away_team_id")
+    .eq("season", season)
+    .eq("round", round);
+
+  if (wcGames?.length) {
+    try {
+      const espnRes = await fetch(
+        `https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?seasontype=2&week=${nflWeek}&season=${season}`,
+        { next: { revalidate: 0 } }
+      );
+      if (espnRes.ok) {
+        const espnData = await espnRes.json();
+        const scoreByAbbr: { [abbr: string]: number } = {};
+
+        for (const event of (espnData.events || [])) {
+          const comp = event.competitions?.[0];
+          if (!comp) continue;
+          const home = comp.competitors?.find((c: any) => c.homeAway === "home");
+          const away = comp.competitors?.find((c: any) => c.homeAway === "away");
+          if (home?.team?.abbreviation) {
+            const abbr = ESPN_ABR_MAP[home.team.abbreviation] || home.team.abbreviation;
+            scoreByAbbr[abbr] = parseFloat(home.score || "0");
+          }
+          if (away?.team?.abbreviation) {
+            const abbr = ESPN_ABR_MAP[away.team.abbreviation] || away.team.abbreviation;
+            scoreByAbbr[abbr] = parseFloat(away.score || "0");
+          }
+        }
+
+        const scoreUpdates = wcGames
+          .map(game => {
+            const homeAbbr = teamAbbrById.get(game.home_team_id);
+            const awayAbbr = teamAbbrById.get(game.away_team_id);
+            const homeScore = homeAbbr ? scoreByAbbr[homeAbbr] : undefined;
+            const awayScore = awayAbbr ? scoreByAbbr[awayAbbr] : undefined;
+            return {
+              id: game.id,
+              ...(homeScore !== undefined ? { home_score: homeScore } : {}),
+              ...(awayScore !== undefined ? { away_score: awayScore } : {}),
+            };
+          })
+          .filter(g => "home_score" in g || "away_score" in g);
+
+        if (scoreUpdates.length) {
+          const { error: scoresUpdateErr } = await supabaseAdmin
+            .from("playoff_games")
+            .upsert(scoreUpdates, { onConflict: "id" });
+          if (scoresUpdateErr) {
+            errors.push({ stage: "playoff_game_scores", error: scoresUpdateErr.message });
+          } else {
+            scoresUpdated = scoreUpdates.length;
+          }
+        }
+      }
+    } catch (e: any) {
+      errors.push({ stage: "espn-scores", error: e.message });
+    }
+  }
+
   return NextResponse.json({
     success: true,
     live: true,
@@ -304,6 +371,7 @@ async function runLiveSync() {
     sampleSleeperEntries: sampleEntries,
     playersProcessed: players.length,
     leaguesProcessed: leagues?.length || 0,
+    scoresUpdated,
     errors,
   });
 }
