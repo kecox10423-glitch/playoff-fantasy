@@ -408,7 +408,13 @@ export default function RosterPage() {
   const teamTotal = selectedUserId ? getTeamTotal(selectedUserId) : 0;
   const hasTeamTotal = teamTotal > 0;
   const selectedMember = members.find(m => m.user_id === selectedUserId);
-  const isSeasonTab = activeTab === "season";
+  // Once playoffs are active, the Season tab button is hidden below - force
+  // the effective tab to "playoff" regardless of activeTab's stored value
+  // (left as-is; it just becomes unreachable/irrelevant once active) so the
+  // page can't get stuck rendering season content with no way back.
+  const isPlayoffsActive = league?.league_status === "ACTIVE";
+  const effectiveTab = isPlayoffsActive ? "playoff" : activeTab;
+  const isSeasonTab = effectiveTab === "season";
   const weekOrNull = isSeasonTab ? null : selectedWeek;
 
   return (
@@ -462,24 +468,26 @@ export default function RosterPage() {
         </div>
 
         <div className="flex border-b border-gray-800 mb-6 gap-1">
-          <button
-            onClick={() => setActiveTab("season")}
-            className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors ${
-              activeTab === "season" ? "border-green-500 text-green-400" : "border-transparent text-gray-400 hover:text-white"
-            }`}
-          >
-            2026 Season Stats
-          </button>
+          {!isPlayoffsActive && (
+            <button
+              onClick={() => setActiveTab("season")}
+              className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors ${
+                effectiveTab === "season" ? "border-green-500 text-green-400" : "border-transparent text-gray-400 hover:text-white"
+              }`}
+            >
+              2026 Season Stats
+            </button>
+          )}
           <button
             onClick={() => setActiveTab("playoff")}
             className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors ${
-              activeTab === "playoff" ? "border-green-500 text-green-400" : "border-transparent text-gray-400 hover:text-white"
+              effectiveTab === "playoff" ? "border-green-500 text-green-400" : "border-transparent text-gray-400 hover:text-white"
             }`}
           >
             Playoff Stats
           </button>
 
-          {activeTab === "playoff" && (
+          {effectiveTab === "playoff" && (
             <div className="ml-auto flex items-center gap-2">
               <label className="text-gray-400 text-xs">Week:</label>
               <select
@@ -497,11 +505,11 @@ export default function RosterPage() {
           )}
         </div>
 
-        {activeTab === "season" && (
+        {effectiveTab === "season" && (
           <p className="text-gray-600 text-xs mb-4">Regular season stats shown for context. Points are based on playoff performance only.</p>
         )}
 
-        {activeTab === "playoff" && !hasPlayoffStats && (
+        {effectiveTab === "playoff" && !hasPlayoffStats && (
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 text-center mb-6">
             <p className="text-gray-400 text-sm font-bold">No playoff stats yet</p>
             <p className="text-gray-600 text-xs mt-1">Playoff stats will update after Wild Card weekend (Jan 11).</p>

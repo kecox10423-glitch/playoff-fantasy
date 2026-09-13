@@ -394,6 +394,7 @@ export default function LeaguePage() {
   const isDraftStarted = league.draft_status === "IN_PROGRESS" || league.draft_status === "COMPLETED";
   const spotsLeft = league.num_teams - members.length;
   const draftComplete = league.draft_status === "COMPLETED";
+  const isPlayoffsActive = league.league_status === "ACTIVE";
   const conferenceEnabled = league.conference_enabled;
   const confAName = league.conference_a_name || "AFC";
   const confBName = league.conference_b_name || "NFC";
@@ -506,9 +507,13 @@ export default function LeaguePage() {
           </div>
 
           {draftComplete ? (
-            <div className="w-full bg-gray-800 border border-gray-700 text-gray-400 font-black py-3 rounded-lg text-lg text-center">
-              🏆 Draft Complete — Good Luck!
-            </div>
+            // Between-draft-and-playoffs message only - disappears once the
+            // league is locked/active for playoffs, no replacement.
+            !isPlayoffsActive && (
+              <div className="w-full bg-gray-800 border border-gray-700 text-gray-400 font-black py-3 rounded-lg text-lg text-center">
+                🏆 Draft Complete — Good Luck!
+              </div>
+            )
           ) : (
             <button onClick={openDraftRoom} className="w-full bg-green-600 hover:bg-green-500 text-white font-black py-3 rounded-lg text-lg transition-colors">
               🏈 Enter Draft Room
