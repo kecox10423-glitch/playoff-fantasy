@@ -48,6 +48,10 @@ function normalizeName(name: string): string {
     .trim();
 }
 
+// NFL-style reseeding, WC→DIV only (DIV→CC and CC→SB are straight
+// advancement, no reseed - see runLiveSync). With 3 WC winners + 1 bye,
+// this must produce exactly 2 games: bye vs the lowest surviving seed,
+// and the other two survivors play each other.
 function buildFloatingMatchups(
   byeTeam: { id: number; seed: number },
   wcWinners: { id: number; seed: number }[]
@@ -55,9 +59,26 @@ function buildFloatingMatchups(
   const sorted = [...wcWinners].sort((a, b) => a.seed - b.seed);
   return [
     [byeTeam.id, sorted[sorted.length - 1].id],
-    [sorted[0].id, sorted[sorted.length - 2].id],
-    [sorted[1].id, sorted[sorted.length - 3].id],
+    [sorted[0].id, sorted[1].id],
   ];
+}
+
+// The round currently "in play": the earliest round (WC→DIV→CC→SB) that
+// has been generated and isn't fully decided yet. This is the entire
+// mechanism that keeps a settled round's scores frozen - once every game
+// in a round has a winner_team_id (permanent, never cleared), that round
+// can never be returned here again, so runLiveSync can never re-touch its
+// player_stats/scores. Returns null once everything is decided (or if
+// nothing's been generated yet, which shouldn't happen since WC always
+// exists from the start).
+function getCurrentRound(games: any[]): string | null {
+  for (const round of ROUND_ORDER) {
+    const roundGames = games.filter(g => g.round === round);
+    if (roundGames.length === 0) continue;
+    if (roundGames.every(g => g.winner_team_id)) continue;
+    return round;
+  }
+  return null;
 }
 
 // Confirmed via Vercel logs: sync-playoff's "No players found" 500 is an
@@ -77,14 +98,33 @@ async function fetchPlayers(season: number) {
 }
 
 // ── Live beta poller ──────────────────────────────────────────────────────
-// Scoped to the WC round only (real NFL Week 1, standing in for the mock
-// bracket's opening round during the Sept 9 beta). No completeness gate:
-// every call re-pulls whatever Sleeper currently has and overwrites
-// player_stats, then rescores. Safe to call every 1-2 min — everything here
-// is upsert-by-unique-key, so a rerun just overwrites with the latest values.
+// Round-aware: operates on whatever round is currently in play (see
+// getCurrentRound), starting with WC and advancing automatically as rounds
+// are decided. No completeness gate on stats/scoring itself - every call
+// re-pulls whatever Sleeper currently has for the current round and
+// overwrites player_stats, then rescores. Safe to call every 1-2 min —
+// everything here is upsert-by-unique-key, so a rerun just overwrites with
+// the latest values. Winner determination/elimination/advancement (below)
+// is the one part that IS gated - only after every game in the current
+// round is final (Option A, bracket-games-only).
 async function runLiveSync() {
   const season = 2026;
-  const round = "WC";
+
+  const { data: allPlayoffGames } = await supabaseAdmin
+    .from("playoff_games")
+    .select("*")
+    .eq("season", season);
+
+  const round = getCurrentRound(allPlayoffGames || []);
+
+  if (!round) {
+    return NextResponse.json({
+      success: true,
+      round: null,
+      message: "No round currently in progress — playoffs complete, or the bracket hasn't been generated yet.",
+    }, { status: 200 });
+  }
+
   const nflWeek = ROUND_TO_NFL_WEEK[round];
   const dbWeek = ROUND_TO_DB_WEEK[round];
 
@@ -295,19 +335,23 @@ async function runLiveSync() {
     if (standingsErr) errors.push({ stage: "standings", id: league.id, error: standingsErr.message });
   }
 
-  // ── Persist real ESPN scores onto the WC round's bracket games ──────────
-  // Live, every poll, regardless of finality - this is display-only for now
-  // (winner determination is a separate, later piece). Each bracket team's
-  // score comes from THEIR OWN real NFL game this week, not from the two
-  // teams playing each other (the WC pairings here are fictional).
+  // ── Real ESPN scores for the current round's bracket games ──────────────
+  // Live, every poll, regardless of finality - scores update as games
+  // progress. Each bracket team's score comes from THEIR OWN real NFL game
+  // this week, not from the two teams playing each other (WC's pairings
+  // are fictional). Winner determination/elimination/advancement below
+  // only fires once every game in THIS round has both teams' real games
+  // marked final by ESPN (Option A: bracket-games-only, not the whole NFL
+  // week) - computed from the same fetch, no second ESPN call.
   let scoresUpdated = 0;
-  const { data: wcGames } = await supabaseAdmin
-    .from("playoff_games")
-    .select("id, home_team_id, away_team_id")
-    .eq("season", season)
-    .eq("round", round);
+  let roundComplete = false;
+  let winnersDecided = 0;
+  let newlyEliminatedCount = 0;
+  let nextRoundGenerated = false;
 
-  if (wcGames?.length) {
+  const currentRoundGames = (allPlayoffGames || []).filter(g => g.round === round);
+
+  if (currentRoundGames.length) {
     try {
       const espnRes = await fetch(
         `https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?seasontype=2&week=${nflWeek}&season=${season}`,
@@ -316,23 +360,27 @@ async function runLiveSync() {
       if (espnRes.ok) {
         const espnData = await espnRes.json();
         const scoreByAbbr: { [abbr: string]: number } = {};
+        const finalByAbbr: { [abbr: string]: boolean } = {};
 
         for (const event of (espnData.events || [])) {
           const comp = event.competitions?.[0];
           if (!comp) continue;
+          const isFinal = comp.status?.type?.completed === true;
           const home = comp.competitors?.find((c: any) => c.homeAway === "home");
           const away = comp.competitors?.find((c: any) => c.homeAway === "away");
           if (home?.team?.abbreviation) {
             const abbr = ESPN_ABR_MAP[home.team.abbreviation] || home.team.abbreviation;
             scoreByAbbr[abbr] = parseFloat(home.score || "0");
+            finalByAbbr[abbr] = isFinal;
           }
           if (away?.team?.abbreviation) {
             const abbr = ESPN_ABR_MAP[away.team.abbreviation] || away.team.abbreviation;
             scoreByAbbr[abbr] = parseFloat(away.score || "0");
+            finalByAbbr[abbr] = isFinal;
           }
         }
 
-        const scoreUpdates = wcGames
+        const scoreUpdates = currentRoundGames
           .map(game => {
             const homeAbbr = teamAbbrById.get(game.home_team_id);
             const awayAbbr = teamAbbrById.get(game.away_team_id);
@@ -346,13 +394,12 @@ async function runLiveSync() {
           })
           .filter(g => "home_score" in g || "away_score" in g);
 
-        // These rows always already exist (ids came from the SELECT above),
-        // so this is a plain per-row UPDATE, not an upsert - upsert's
-        // INSERT ... ON CONFLICT form still validates NOT NULL constraints
-        // (conference, round, etc.) on the hypothetical insert row even
-        // when it's guaranteed to hit the conflict branch, which fails here
-        // since these partial objects only carry id + the score fields.
-        // Only 6 rows max, so no batching needed.
+        // These rows always already exist, so this is a plain per-row
+        // UPDATE, not an upsert - upsert's INSERT ... ON CONFLICT form
+        // still validates NOT NULL constraints (conference, round, etc.)
+        // on the hypothetical insert row even on a guaranteed conflict,
+        // which fails here since these partial objects only carry id +
+        // the score fields. At most 6 rows, so no batching needed.
         for (const { id, ...fields } of scoreUpdates) {
           const { error: scoreUpdateErr } = await supabaseAdmin
             .from("playoff_games")
@@ -362,6 +409,148 @@ async function runLiveSync() {
             errors.push({ stage: "playoff_game_scores", id, error: scoreUpdateErr.message });
           } else {
             scoresUpdated++;
+          }
+        }
+
+        roundComplete = currentRoundGames.every(game => {
+          const homeAbbr = teamAbbrById.get(game.home_team_id);
+          const awayAbbr = teamAbbrById.get(game.away_team_id);
+          return !!homeAbbr && !!awayAbbr && finalByAbbr[homeAbbr] === true && finalByAbbr[awayAbbr] === true;
+        });
+
+        if (roundComplete) {
+          // ── Decide winners, eliminate losers ─────────────────────────────
+          const loserIds: number[] = [];
+
+          for (const game of currentRoundGames) {
+            if (game.winner_team_id) continue; // already decided - defensive
+
+            const homeAbbr = teamAbbrById.get(game.home_team_id);
+            const awayAbbr = teamAbbrById.get(game.away_team_id);
+            if (!homeAbbr || !awayAbbr) continue;
+
+            const homeScore = scoreByAbbr[homeAbbr] ?? 0;
+            const awayScore = scoreByAbbr[awayAbbr] ?? 0;
+            const homeSeed = seedByTeamId.get(game.home_team_id) ?? 99;
+            const awaySeed = seedByTeamId.get(game.away_team_id) ?? 99;
+
+            let winnerId: number;
+            let loserId: number;
+            if (homeScore > awayScore) {
+              winnerId = game.home_team_id; loserId = game.away_team_id;
+            } else if (awayScore > homeScore) {
+              winnerId = game.away_team_id; loserId = game.home_team_id;
+            } else {
+              // Tie - higher seed (lower seed number) wins
+              const homeIsHigherSeed = homeSeed <= awaySeed;
+              winnerId = homeIsHigherSeed ? game.home_team_id : game.away_team_id;
+              loserId  = homeIsHigherSeed ? game.away_team_id : game.home_team_id;
+            }
+
+            const { error: winnerErr } = await supabaseAdmin
+              .from("playoff_games")
+              .update({ winner_team_id: winnerId })
+              .eq("id", game.id);
+
+            if (winnerErr) {
+              errors.push({ stage: "winner_determination", id: game.id, error: winnerErr.message });
+            } else {
+              winnersDecided++;
+              loserIds.push(loserId);
+            }
+          }
+
+          for (const teamId of loserIds) {
+            const { error: elimErr } = await supabaseAdmin
+              .from("nfl_teams")
+              .update({ is_eliminated: true, eliminated_round: round })
+              .eq("id", teamId)
+              .eq("season", season);
+            if (elimErr) {
+              errors.push({ stage: "elimination", id: teamId, error: elimErr.message });
+              continue;
+            }
+            const { error: benchErr } = await supabaseAdmin
+              .from("players")
+              .update({ is_active: false })
+              .eq("nfl_team_id", teamId);
+            if (benchErr) errors.push({ stage: "elimination-players", id: teamId, error: benchErr.message });
+            newlyEliminatedCount++;
+          }
+
+          // ── Generate the next round, if it doesn't already exist ─────────
+          // WC→DIV reseeds by seed; DIV→CC and CC→SB are straight
+          // advancement (survivors sorted by seed, better seed hosts) -
+          // no reseeding past Wild Card.
+          const nextRound = NEXT_ROUND[round];
+          if (nextRound) {
+            const { data: nextRoundExisting } = await supabaseAdmin
+              .from("playoff_games")
+              .select("id")
+              .eq("season", season)
+              .eq("round", nextRound)
+              .limit(1);
+
+            if (!nextRoundExisting?.length) {
+              const { data: freshTeams } = await supabaseAdmin
+                .from("nfl_teams")
+                .select("*")
+                .eq("season", season);
+              const survivors = (freshTeams || []).filter(t => !t.is_eliminated);
+              const newGames: any[] = [];
+
+              if (nextRound === "DIV") {
+                for (const conf of ["AFC", "NFC"]) {
+                  const confSurvivors = survivors.filter(t => t.conference === conf);
+                  const byeTeam   = confSurvivors.find(t => t.seed === 1);
+                  const wcWinners = confSurvivors.filter(t => t.seed !== 1);
+                  if (!byeTeam || wcWinners.length !== 3) continue;
+                  buildFloatingMatchups(byeTeam, wcWinners).forEach(([homeId, awayId], i) => {
+                    newGames.push({
+                      season, conference: conf, round: "DIV",
+                      home_team_id: homeId, away_team_id: awayId,
+                      game_date: DIV_DATES[conf as "AFC" | "NFC"],
+                      game_time: DIV_TIMES[i],
+                    });
+                  });
+                }
+              } else if (nextRound === "CC") {
+                for (const conf of ["AFC", "NFC"]) {
+                  const confSurvivors = survivors
+                    .filter(t => t.conference === conf)
+                    .sort((a, b) => a.seed - b.seed);
+                  if (confSurvivors.length !== 2) continue;
+                  newGames.push({
+                    season, conference: conf, round: "CC",
+                    home_team_id: confSurvivors[0].id,
+                    away_team_id: confSurvivors[1].id,
+                    game_date: CC_DATE,
+                    game_time: conf === "AFC" ? CC_TIMES[0] : CC_TIMES[1],
+                  });
+                }
+              } else if (nextRound === "SB") {
+                const afcChamp = survivors.find(t => t.conference === "AFC");
+                const nfcChamp = survivors.find(t => t.conference === "NFC");
+                if (afcChamp && nfcChamp) {
+                  newGames.push({
+                    season, conference: "SB", round: "SB",
+                    home_team_id: afcChamp.id,
+                    away_team_id: nfcChamp.id,
+                    game_date: SB_DATE,
+                    game_time: SB_TIME,
+                  });
+                }
+              }
+
+              if (newGames.length > 0) {
+                const { error: insertErr } = await supabaseAdmin.from("playoff_games").insert(newGames);
+                if (insertErr) {
+                  errors.push({ stage: "next_round_generation", error: insertErr.message });
+                } else {
+                  nextRoundGenerated = true;
+                }
+              }
+            }
           }
         }
       }
@@ -380,6 +569,10 @@ async function runLiveSync() {
     playersProcessed: players.length,
     leaguesProcessed: leagues?.length || 0,
     scoresUpdated,
+    roundComplete,
+    winnersDecided,
+    newlyEliminated: newlyEliminatedCount,
+    nextRoundGenerated,
     errors,
   });
 }
