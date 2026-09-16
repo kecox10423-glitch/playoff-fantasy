@@ -194,58 +194,73 @@ async function runLiveSync() {
   );
   console.log(`[live-sync] sample:`, JSON.stringify(sampleEntries));
 
-  const playerStatRows = players.map(player => {
-    let rawStats: any = null;
+  // Players with no Sleeper data this week (bye, game hasn't kicked off,
+  // or a brand-new round that hasn't started in real life) get no row at
+  // all - not a row of zeros. player_stats columns default to 0 at the
+  // DB level, so upserting an empty stats object on a FIRST-EVER insert
+  // for a (player, week) stores real 0s, not NULL - indistinguishable
+  // from "played and allowed 0 points" for DST's shutout bonus. Omitting
+  // the row entirely lets the existing `if (!stats) return 0` guard in
+  // calcPlayerPoints (which already runs before any position branch)
+  // handle "hasn't played" correctly for every position, not just DST.
+  const playerStatRows = players
+    .map(player => {
+      let rawStats: any = null;
 
-    if (player.position === "DST") {
-      const abbr = teamAbbrById.get(player.nfl_team_id);
-      const sleeperId = abbr ? dstTeamMap[abbr] : null;
-      rawStats = sleeperId ? sleeperWeekData[sleeperId] : null;
-    } else {
-      rawStats = player.sleeper_id ? sleeperWeekData[player.sleeper_id] : null;
-    }
+      if (player.position === "DST") {
+        const abbr = teamAbbrById.get(player.nfl_team_id);
+        const sleeperId = abbr ? dstTeamMap[abbr] : null;
+        rawStats = sleeperId ? sleeperWeekData[sleeperId] : null;
+      } else {
+        rawStats = player.sleeper_id ? sleeperWeekData[player.sleeper_id] : null;
+      }
 
-    const stats = rawStats ? {
-      pass_yards:         rawStats.pass_yd   || 0,
-      pass_tds:           rawStats.pass_td   || 0,
-      interceptions:      rawStats.pass_int  || 0,
-      pass_attempts:      rawStats.pass_att  || 0,
-      pass_completions:   rawStats.pass_cmp  || 0,
-      rush_yards:         rawStats.rush_yd   || 0,
-      rush_tds:           rawStats.rush_td   || 0,
-      rush_attempts:      rawStats.rush_att  || 0,
-      receptions:         rawStats.rec       || 0,
-      rec_yards:          rawStats.rec_yd    || 0,
-      rec_tds:            rawStats.rec_td    || 0,
-      fg_made:            rawStats.fgm       || 0,
-      fg_attempts:        rawStats.fga       || 0,
-      fg_0_39:            (rawStats.fgm_0_19 || 0) + (rawStats.fgm_20_29 || 0) + (rawStats.fgm_30_39 || 0),
-      fg_40_49:           rawStats.fgm_40_49 || 0,
-      fg_50_plus:         rawStats.fgm_50p   || 0,
-      xp_made:            rawStats.xpm       || 0,
-      pat_attempts:       rawStats.xpa       || 0,
-      dst_sacks:          rawStats.sack      || 0,
-      dst_ints:           rawStats.int       || 0,
-      dst_fumbles_rec:    rawStats.fum_rec   || 0,
-      dst_tds:            rawStats.def_td    || 0,
-      dst_safety:         rawStats.safe      || 0,
-      dst_points_allowed: rawStats.pts_allow || 0,
-      dst_tackles:        rawStats.tkl       || 0,
-      fumbles_lost:       rawStats.fum_lost  || 0,
-    } : null;
+      if (!rawStats) return null;
 
-    return {
-      player_id: player.id,
-      season,
-      week: dbWeek,
-      ...(stats || {}),
-      fantasy_points: 0,
-    };
-  });
+      const stats = {
+        pass_yards:         rawStats.pass_yd   || 0,
+        pass_tds:           rawStats.pass_td   || 0,
+        interceptions:      rawStats.pass_int  || 0,
+        pass_attempts:      rawStats.pass_att  || 0,
+        pass_completions:   rawStats.pass_cmp  || 0,
+        rush_yards:         rawStats.rush_yd   || 0,
+        rush_tds:           rawStats.rush_td   || 0,
+        rush_attempts:      rawStats.rush_att  || 0,
+        receptions:         rawStats.rec       || 0,
+        rec_yards:          rawStats.rec_yd    || 0,
+        rec_tds:            rawStats.rec_td    || 0,
+        fg_made:            rawStats.fgm       || 0,
+        fg_attempts:        rawStats.fga       || 0,
+        fg_0_39:            (rawStats.fgm_0_19 || 0) + (rawStats.fgm_20_29 || 0) + (rawStats.fgm_30_39 || 0),
+        fg_40_49:           rawStats.fgm_40_49 || 0,
+        fg_50_plus:         rawStats.fgm_50p   || 0,
+        xp_made:            rawStats.xpm       || 0,
+        pat_attempts:       rawStats.xpa       || 0,
+        dst_sacks:          rawStats.sack      || 0,
+        dst_ints:           rawStats.int       || 0,
+        dst_fumbles_rec:    rawStats.fum_rec   || 0,
+        dst_tds:            rawStats.def_td    || 0,
+        dst_safety:         rawStats.safe      || 0,
+        dst_points_allowed: rawStats.pts_allow || 0,
+        dst_tackles:        rawStats.tkl       || 0,
+        fumbles_lost:       rawStats.fum_lost  || 0,
+      };
 
-  const { error: statsUpsertErr } = await supabaseAdmin
-    .from("player_stats")
-    .upsert(playerStatRows, { onConflict: "player_id,season,week" });
+      return {
+        player_id: player.id,
+        season,
+        week: dbWeek,
+        ...stats,
+        fantasy_points: 0,
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => row !== null);
+
+  const { error: statsUpsertErr } = playerStatRows.length
+    ? await supabaseAdmin
+        .from("player_stats")
+        .upsert(playerStatRows, { onConflict: "player_id,season,week" })
+    : { error: null };
 
   if (statsUpsertErr) {
     errors.push({ stage: "player_stats", error: statsUpsertErr.message });
