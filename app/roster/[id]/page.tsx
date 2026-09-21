@@ -270,6 +270,7 @@ export default function RosterPage() {
   const [picks, setPicks] = useState<any[]>([]);
   const [allStats, setAllStats] = useState<any[]>([]);
   const [playoffGames, setPlayoffGames] = useState<any[]>([]);
+  const [standings, setStandings] = useState<any[]>([]);
   const [user, setUser] = useState<any>(null);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -296,6 +297,7 @@ export default function RosterPage() {
         { data: picksData },
         { data: statsData },
         { data: gamesData },
+        { data: standingsData },
       ] = await Promise.all([
         supabase.from("leagues").select("*").eq("id", leagueId).single(),
         supabase.from("league_members").select("*").eq("league_id", leagueId).order("draft_position"),
@@ -303,10 +305,12 @@ export default function RosterPage() {
         supabase.from("draft_picks").select("*").eq("league_id", leagueId),
         supabase.from("player_stats").select("*").eq("season", 2026),
         supabase.from("playoff_games").select("*").eq("season", 2026),
+        supabase.from("standings").select("*").eq("league_id", leagueId),
       ]);
 
       setLeague(leagueData);
       setMembers(membersData || []);
+      setStandings(standingsData || []);
       setPlayers(playersData || []);
       setPicks(picksData || []);
       setAllStats(statsData || []);
@@ -345,21 +349,19 @@ export default function RosterPage() {
     return allStats.find(s => s.player_id === playerId && s.week === week) || null;
   }
 
-  function getPlayerSeasonTotal(playerId: number, position: string, seed: number | undefined) {
-    const weekStats = allStats.filter(s => s.player_id === playerId && s.week >= 1 && s.week <= 4);
-    if (weekStats.length === 0) return null;
-    return weekStats.reduce((sum, s) => {
-      const isByeThisRound = seed === 1 && s.week === 1;
-      return sum + calcPlayerPoints(s, position, scoringSettings, isByeThisRound);
-    }, 0);
-  }
-
+  // Reads the server-banked total from `standings` (same source the
+  // standings page uses) instead of re-summing raw player_stats client-side.
+  // Each week's points are frozen into `scores`/`standings` at the moment
+  // that round was live, using is_active AS OF THEN - a player eliminated
+  // after WC still has their WC points banked, but nothing scored for them
+  // after. Reconstructing that here from current is_active would get it
+  // wrong either way: summing every stat row (the bug this fixed) double
+  // counts post-elimination stats, and filtering by *current* is_active
+  // would zero out even their legitimately-earned pre-elimination points,
+  // since is_active is a single now-or-never flag, not per-round history.
   function getTeamTotal(userId: string) {
-    const roster = getRosterForUser(userId);
-    return roster.reduce((sum: number, p: any) => {
-      const t = getPlayerSeasonTotal(p.id, p.position, p.nfl_teams?.seed);
-      return sum + (t || 0);
-    }, 0);
+    const row = standings.find(s => s.user_id === userId);
+    return row ? parseFloat(row.total_points) || 0 : 0;
   }
 
   function getCurrentRound(): string {
