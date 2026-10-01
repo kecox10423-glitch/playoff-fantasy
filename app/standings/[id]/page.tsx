@@ -131,11 +131,11 @@ function StandingsTable({
             <tr className="bg-gray-800/80 text-gray-400 text-xs uppercase tracking-widest">
               <th className="text-left px-4 py-3 sticky left-0 bg-gray-800 z-10 w-14">Rank</th>
               <th className="text-left px-4 py-3 sticky left-14 bg-gray-800 z-10 min-w-[150px]">Team</th>
+              <th className="text-right px-4 py-3 w-20 text-white font-black">Total</th>
               <th className="text-right px-4 py-3 w-14">WC</th>
               <th className="text-right px-4 py-3 w-14">DIV</th>
               <th className="text-right px-4 py-3 w-14">CC</th>
               <th className="text-right px-4 py-3 w-14">SB</th>
-              <th className="text-right px-4 py-3 w-20 text-white font-black">Total</th>
               <th className="text-right px-4 py-3 w-16">
                 PBL<Tooltip text="Points Behind Leader. How far behind 1st place you are." />
               </th>
@@ -187,15 +187,15 @@ function StandingsTable({
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-4 text-right text-gray-300 text-sm w-14 tabular-nums">{wc != null ? wc.toFixed(1) : "—"}</td>
-                  <td className="px-4 py-4 text-right text-gray-300 text-sm w-14 tabular-nums">{div != null ? div.toFixed(1) : "—"}</td>
-                  <td className="px-4 py-4 text-right text-gray-300 text-sm w-14 tabular-nums">{cc != null ? cc.toFixed(1) : "—"}</td>
-                  <td className="px-4 py-4 text-right text-gray-300 text-sm w-14 tabular-nums">{sb != null ? sb.toFixed(1) : "—"}</td>
                   <td className="px-4 py-4 text-right w-20 tabular-nums">
                     <span className={`font-black text-xl tracking-tight ${anyTeamHasScore && total > 0 ? "text-green-400" : "text-gray-500"}`}>
                       {total.toFixed(1)}
                     </span>
                   </td>
+                  <td className="px-4 py-4 text-right text-gray-300 text-sm w-14 tabular-nums">{wc != null ? wc.toFixed(1) : "—"}</td>
+                  <td className="px-4 py-4 text-right text-gray-300 text-sm w-14 tabular-nums">{div != null ? div.toFixed(1) : "—"}</td>
+                  <td className="px-4 py-4 text-right text-gray-300 text-sm w-14 tabular-nums">{cc != null ? cc.toFixed(1) : "—"}</td>
+                  <td className="px-4 py-4 text-right text-gray-300 text-sm w-14 tabular-nums">{sb != null ? sb.toFixed(1) : "—"}</td>
                   <td className="px-4 py-4 text-right text-sm w-16 tabular-nums">
                     {pbl === null
                       ? <span className="text-gray-600">—</span>
