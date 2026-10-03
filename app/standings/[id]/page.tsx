@@ -24,8 +24,8 @@ const AVATAR_COLORS = [
   { name: "lime", hex: "#65a30d" },
 ];
 
-function Avatar({ member, size = "md" }: { member: any; size?: "sm" | "md" | "lg" }) {
-  const sizeClass = size === "sm" ? "w-7 h-7 text-xs" : size === "lg" ? "w-14 h-14 text-xl" : "w-10 h-10 text-sm";
+function Avatar({ member, size = "md" }: { member: any; size?: "xs" | "sm" | "md" | "lg" }) {
+  const sizeClass = size === "xs" ? "w-5 h-5 text-[9px]" : size === "sm" ? "w-7 h-7 text-xs" : size === "lg" ? "w-14 h-14 text-xl" : "w-10 h-10 text-sm";
   const initials = member.team_name.split(" ").map((w: string) => w[0]).join("").substring(0, 2).toUpperCase();
   if (member.avatar_url) {
     return <img src={member.avatar_url} alt={member.team_name} className={`${sizeClass} rounded-full object-cover flex-shrink-0`} />;
@@ -38,15 +38,16 @@ function Avatar({ member, size = "md" }: { member: any; size?: "sm" | "md" | "lg
   );
 }
 
-function RankBadge({ rank }: { rank: number }) {
+function RankBadge({ rank, size = "md" }: { rank: number; size?: "sm" | "md" }) {
   const styles: { [k: number]: string } = {
     1: "bg-yellow-500/20 text-yellow-300 ring-1 ring-yellow-500/50 shadow-sm shadow-yellow-900/30",
     2: "bg-gray-400/15 text-gray-300 ring-1 ring-gray-400/30",
     3: "bg-orange-600/20 text-orange-400 ring-1 ring-orange-500/30",
   };
   const style = styles[rank] ?? "bg-gray-800 text-gray-500 ring-1 ring-gray-700";
+  const sizeClass = size === "sm" ? "w-6 h-6 text-[10px]" : "w-8 h-8 text-xs";
   return (
-    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 ${style}`}>
+    <div className={`${sizeClass} rounded-full flex items-center justify-center font-black flex-shrink-0 ${style}`}>
       {rank}
     </div>
   );
@@ -125,7 +126,59 @@ function StandingsTable({
           <p className="text-gray-400 text-xs">Scores update after each playoff week. Check back after Wild Card weekend (Jan 11).</p>
         </div>
       )}
-      <div className="overflow-x-auto">
+
+      {/* MOBILE: compact row list - Rank, Team, Total, PBL, REM. Per-round
+          columns, PROJ and ELIM stay desktop-only (see the table below). */}
+      <div className="md:hidden">
+        {rows.map((row, i) => {
+          const isMe = row.user_id === user?.id;
+          const member = getMember(row.user_id);
+          const total = parseFloat(row.total_points) || 0;
+          const pbl = !anyTeamHasScore ? null : i === 0 ? null : total - leaderTotal;
+          const rem = getPlayersRemaining(row.user_id);
+
+          return (
+            <div
+              key={row.user_id}
+              onClick={() => router.push(`/roster/${leagueId}?team=${row.user_id}`)}
+              className={`flex items-center gap-2 px-3 py-2.5 border-t border-gray-800 cursor-pointer first:border-t-0 ${
+                isMe ? "bg-green-950/60 active:bg-green-900/40" : "active:bg-gray-800/60"
+              }`}
+            >
+              <RankBadge rank={i + 1} size="sm" />
+              {member && <Avatar member={member} size="xs" />}
+              <div className="min-w-0 flex-1">
+                <p className={`font-bold text-xs truncate tracking-tight ${isMe ? "text-green-400" : "text-white"}`}>
+                  {member?.team_name || "Unknown"}
+                  {isMe && <span className="text-gray-500 font-normal ml-1">(You)</span>}
+                </p>
+              </div>
+              <div className="flex items-center gap-2.5 flex-shrink-0">
+                <div className="text-right w-11">
+                  <p className={`font-black text-sm tabular-nums leading-tight ${anyTeamHasScore && total > 0 ? "text-green-400" : "text-gray-500"}`}>
+                    {total.toFixed(1)}
+                  </p>
+                  <p className="text-[9px] text-gray-600 uppercase tracking-wide leading-tight">Total</p>
+                </div>
+                <div className="text-right w-9">
+                  {pbl === null
+                    ? <p className="text-gray-600 text-xs leading-tight">—</p>
+                    : <p className="text-red-400 text-xs tabular-nums leading-tight">{pbl.toFixed(1)}</p>
+                  }
+                  <p className="text-[9px] text-gray-600 uppercase tracking-wide leading-tight">PBL</p>
+                </div>
+                <div className="hidden min-[380px]:block text-right w-6">
+                  <p className="text-green-400 font-bold text-xs tabular-nums leading-tight">{rem}</p>
+                  <p className="text-[9px] text-gray-600 uppercase tracking-wide leading-tight">Rem</p>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* DESKTOP: full table, unchanged */}
+      <div className="hidden md:block overflow-x-auto">
         <table className="w-full">
           <thead>
             <tr className="bg-gray-800/80 text-gray-400 text-xs uppercase tracking-widest">
