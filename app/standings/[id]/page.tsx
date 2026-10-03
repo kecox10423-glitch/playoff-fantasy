@@ -24,6 +24,13 @@ const AVATAR_COLORS = [
   { name: "lime", hex: "#65a30d" },
 ];
 
+// Shared between the mobile header row and every team row so the column
+// labels stay pixel-aligned with their numbers. REM's track collapses to
+// 0 below 380px to match its cell being hidden there (see getPlayersRemaining
+// usage below) - both the grid template and the cell visibility must change
+// together or the remaining columns would drift out of alignment.
+const MOBILE_GRID_COLS = "grid-cols-[22px_1fr_48px_44px] min-[380px]:grid-cols-[22px_1fr_48px_44px_26px]";
+
 function Avatar({ member, size = "md" }: { member: any; size?: "xs" | "sm" | "md" | "lg" }) {
   const sizeClass = size === "xs" ? "w-5 h-5 text-[9px]" : size === "sm" ? "w-7 h-7 text-xs" : size === "lg" ? "w-14 h-14 text-xl" : "w-10 h-10 text-sm";
   const initials = member.team_name.split(" ").map((w: string) => w[0]).join("").substring(0, 2).toUpperCase();
@@ -127,9 +134,19 @@ function StandingsTable({
         </div>
       )}
 
-      {/* MOBILE: compact row list - Rank, Team, Total, PBL, REM. Per-round
-          columns, PROJ and ELIM stay desktop-only (see the table below). */}
+      {/* MOBILE: compact grid - Rank, Team, Total, PBL, REM. One shared
+          column template drives both the header row and every team row,
+          so labels stay pixel-aligned with their numbers at any width.
+          Per-round columns, PROJ and ELIM stay desktop-only (see the
+          table below). */}
       <div className="md:hidden">
+        <div className={`grid ${MOBILE_GRID_COLS} items-center gap-2 px-3 py-2 bg-gray-800/80 text-gray-500 text-[9px] font-bold uppercase tracking-wide border-b border-gray-800`}>
+          <span>#</span>
+          <span>Team</span>
+          <span className="text-right text-gray-300">Total</span>
+          <span className="text-right">PBL</span>
+          <span className="hidden min-[380px]:block text-right">Rem</span>
+        </div>
         {rows.map((row, i) => {
           const isMe = row.user_id === user?.id;
           const member = getMember(row.user_id);
@@ -141,37 +158,25 @@ function StandingsTable({
             <div
               key={row.user_id}
               onClick={() => router.push(`/roster/${leagueId}?team=${row.user_id}`)}
-              className={`flex items-center gap-2 px-3 py-2.5 border-t border-gray-800 cursor-pointer first:border-t-0 ${
+              className={`grid ${MOBILE_GRID_COLS} items-center gap-2 px-3 py-2 border-t border-gray-800 cursor-pointer ${
                 isMe ? "bg-green-950/60 active:bg-green-900/40" : "active:bg-gray-800/60"
               }`}
             >
               <RankBadge rank={i + 1} size="sm" />
-              {member && <Avatar member={member} size="xs" />}
-              <div className="min-w-0 flex-1">
+              <div className="min-w-0 flex items-center gap-1.5">
+                {member && <Avatar member={member} size="xs" />}
                 <p className={`font-bold text-xs truncate tracking-tight ${isMe ? "text-green-400" : "text-white"}`}>
                   {member?.team_name || "Unknown"}
                   {isMe && <span className="text-gray-500 font-normal ml-1">(You)</span>}
                 </p>
               </div>
-              <div className="flex items-center gap-2.5 flex-shrink-0">
-                <div className="text-right w-11">
-                  <p className={`font-black text-sm tabular-nums leading-tight ${anyTeamHasScore && total > 0 ? "text-green-400" : "text-gray-500"}`}>
-                    {total.toFixed(1)}
-                  </p>
-                  <p className="text-[9px] text-gray-600 uppercase tracking-wide leading-tight">Total</p>
-                </div>
-                <div className="text-right w-9">
-                  {pbl === null
-                    ? <p className="text-gray-600 text-xs leading-tight">—</p>
-                    : <p className="text-red-400 text-xs tabular-nums leading-tight">{pbl.toFixed(1)}</p>
-                  }
-                  <p className="text-[9px] text-gray-600 uppercase tracking-wide leading-tight">PBL</p>
-                </div>
-                <div className="hidden min-[380px]:block text-right w-6">
-                  <p className="text-green-400 font-bold text-xs tabular-nums leading-tight">{rem}</p>
-                  <p className="text-[9px] text-gray-600 uppercase tracking-wide leading-tight">Rem</p>
-                </div>
-              </div>
+              <p className={`text-right font-black text-sm tabular-nums ${anyTeamHasScore && total > 0 ? "text-green-400" : "text-gray-500"}`}>
+                {total.toFixed(1)}
+              </p>
+              <p className={`text-right text-xs tabular-nums ${pbl === null ? "text-gray-600" : "text-red-400"}`}>
+                {pbl === null ? "—" : pbl.toFixed(1)}
+              </p>
+              <p className="hidden min-[380px]:block text-right text-green-400 font-bold text-xs tabular-nums">{rem}</p>
             </div>
           );
         })}
