@@ -167,7 +167,6 @@ function StandingsTable({
                 {member && <Avatar member={member} size="xs" />}
                 <p className={`font-bold text-xs truncate tracking-tight ${isMe ? "text-green-400" : "text-white"}`}>
                   {member?.team_name || "Unknown"}
-                  {isMe && <span className="text-gray-500 font-normal ml-1">(You)</span>}
                 </p>
               </div>
               <p className={`text-right font-black text-sm tabular-nums ${anyTeamHasScore && total > 0 ? "text-green-400" : "text-gray-500"}`}>
@@ -241,7 +240,6 @@ function StandingsTable({
                         <span className={`font-bold tracking-tight ${isMe ? "text-green-400" : "text-white"}`}>
                           {member?.team_name || "Unknown"}
                         </span>
-                        {isMe && <span className="text-xs text-gray-500 ml-1">(You)</span>}
                       </div>
                     </div>
                   </td>
