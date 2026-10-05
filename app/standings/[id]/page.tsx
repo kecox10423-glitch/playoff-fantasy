@@ -240,7 +240,6 @@ function StandingsTable({
                         <span className={`font-bold tracking-tight ${isMe ? "text-green-400" : "text-white"}`}>
                           {member?.team_name || "Unknown"}
                         </span>
-                        {isMe && <span className="text-xs text-gray-500 ml-1">(You)</span>}
                       </div>
                     </div>
                   </td>
